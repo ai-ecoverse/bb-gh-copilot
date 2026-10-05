@@ -33,6 +33,11 @@ import {
   resolveCopilotCredential,
   type CopilotUsage,
 } from "./src/copilot-usage.js";
+import {
+  createGhTokenReader,
+  createSecretReader,
+  type CommandRunner,
+} from "./src/credential-store.js";
 import { registerUsageSource } from "./src/usage-source.js";
 
 const SETTINGS_READY_ATTEMPTS = 10;
@@ -91,19 +96,13 @@ function writeAtomic(path: string, value: JsonObject): void {
   }
 }
 
-function readSecret(service: string, account: string): Promise<string | null> {
-  const lookup: [string, string[]] | null = process.platform === "darwin"
-    ? ["security", ["find-generic-password", "-s", service, "-a", account, "-w"]]
-    : process.platform === "linux"
-      ? ["secret-tool", ["lookup", "service", service, "account", account]]
-      : null;
-  if (lookup === null) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    execFile(lookup[0], lookup[1], { timeout: 5_000, encoding: "utf8" }, (error, stdout) => {
-      resolve(error ? null : stdout.trim() || null);
-    });
+const runCommand: CommandRunner = (file, args, options) => new Promise((resolve) => {
+  execFile(file, args, { timeout: options.timeoutMs, encoding: "utf8", env: options.env, windowsHide: true }, (error, stdout) => {
+    resolve(error ? null : stdout.trim() || null);
   });
-}
+});
+
+const readSecret = createSecretReader(runCommand, process.platform);
 
 function readCopilotConfig(env: Record<string, string | undefined>): string | null {
   const configPath = join(env.COPILOT_HOME || join(homedir(), ".copilot"), "config.json");
@@ -256,7 +255,13 @@ export default function plugin(bb: BbPluginApi) {
     const env = { ...process.env, ...agentEnv };
     return readCopilotUsage({
       binary: findBinary(entry),
-      credential: () => resolveCopilotCredential({ env, readConfig: () => readCopilotConfig(env), readSecret }),
+      credential: () => resolveCopilotCredential({
+        env,
+        explicitEnv: new Set(Object.keys(agentEnv)),
+        readConfig: () => readCopilotConfig(env),
+        readSecret,
+        readGhToken: createGhTokenReader(runCommand, env),
+      }),
       fetch: (input, init) => fetch(input, init),
     });
   });

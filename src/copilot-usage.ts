@@ -157,10 +157,18 @@ export async function fetchCopilotUsage(
 export type CredentialSources = {
   /** Environment Copilot runs with: the managed agent's `env` over the process env. */
   env: Record<string, string | undefined>;
+  /**
+   * Variables set explicitly in the managed agent's `env`, as opposed to
+   * inherited from bb's environment. Only matters for Codespaces' injected
+   * `GITHUB_TOKEN`, which an explicit setting overrides.
+   */
+  explicitEnv?: ReadonlySet<string>;
   /** Contents of `$COPILOT_HOME/config.json`, or null when absent. */
   readConfig: () => string | null;
   /** OS credential store lookup; null when absent or unsupported. */
   readSecret: (service: string, account: string) => Promise<string | null>;
+  /** `gh auth token --hostname <hostname>`; null when gh is absent or signed out. */
+  readGhToken?: (hostname: string) => Promise<string | null>;
 };
 
 const loggedInUserSchema = z.object({ host: z.string().min(1), login: z.string().min(1) });
@@ -180,31 +188,15 @@ export function parseCopilotConfig(text: string | null): Record<string, unknown>
   }
 }
 
-/**
- * The token Copilot CLI itself would use: an env token first, then the
- * stored login of the last signed-in user — OS keychain, then the plaintext
- * `copilot_tokens` fallback the CLI writes when no keychain is available.
- */
-export async function resolveCopilotCredential(sources: CredentialSources): Promise<CopilotCredential | null> {
-  const config = parseCopilotConfig(sources.readConfig());
-  const lastUser = loggedInUserSchema.safeParse(config.lastLoggedInUser ?? config.last_logged_in_user);
-  const envHost = normalizeHost(sources.env.COPILOT_GH_HOST) ?? normalizeHost(sources.env.GH_HOST);
-
-  for (const name of TOKEN_ENV_VARS) {
-    const token = sources.env[name]?.trim();
-    if (token) {
-      return {
-        token,
-        host: envHost ?? (lastUser.success ? normalizeHost(lastUser.data.host) : null) ?? DEFAULT_HOST,
-        source: name,
-      };
-    }
-  }
-
-  if (!lastUser.success) return null;
-  const host = normalizeHost(lastUser.data.host);
+async function storedLogin(
+  sources: CredentialSources,
+  config: Record<string, unknown>,
+  lastUser: { host: string; login: string } | null,
+): Promise<CopilotCredential | null> {
+  if (lastUser === null) return null;
+  const host = normalizeHost(lastUser.host);
   if (host === null) return null;
-  const account = `${host}:${lastUser.data.login}`;
+  const account = `${host}:${lastUser.login}`;
   const stored = (await sources.readSecret(KEYCHAIN_SERVICE, account))?.trim();
   if (stored) return { token: stored, host, source: "keychain" };
 
@@ -216,6 +208,41 @@ export async function resolveCopilotCredential(sources: CredentialSources): Prom
     }
   }
   return null;
+}
+
+/**
+ * The token Copilot CLI itself would use, in its documented order: env
+ * tokens, then the stored login of the last signed-in user (OS keychain, or
+ * the plaintext `copilot_tokens` fallback written when no keychain is
+ * available), then `gh auth token`. In Codespaces the automatically injected
+ * `GITHUB_TOKEN` does not override a stored login, so an inherited one is
+ * tried after it.
+ */
+export async function resolveCopilotCredential(sources: CredentialSources): Promise<CopilotCredential | null> {
+  const config = parseCopilotConfig(sources.readConfig());
+  const parsedUser = loggedInUserSchema.safeParse(config.lastLoggedInUser ?? config.last_logged_in_user);
+  const lastUser = parsedUser.success ? parsedUser.data : null;
+  const envHost = normalizeHost(sources.env.COPILOT_GH_HOST) ?? normalizeHost(sources.env.GH_HOST);
+  const host = envHost ?? (lastUser ? normalizeHost(lastUser.host) : null) ?? DEFAULT_HOST;
+  const inCodespace = Boolean(sources.env.CODESPACES);
+
+  let injected: CopilotCredential | null = null;
+  for (const name of TOKEN_ENV_VARS) {
+    const token = sources.env[name]?.trim();
+    if (!token) continue;
+    if (name === "GITHUB_TOKEN" && inCodespace && !sources.explicitEnv?.has(name)) {
+      injected = { token, host, source: name };
+      break;
+    }
+    return { token, host, source: name };
+  }
+
+  const stored = await storedLogin(sources, config, lastUser);
+  if (stored) return stored;
+  if (injected) return injected;
+
+  const ghToken = (await sources.readGhToken?.(new URL(host).host))?.trim();
+  return ghToken ? { token: ghToken, host, source: "gh" } : null;
 }
 
 export async function readCopilotUsage(args: {

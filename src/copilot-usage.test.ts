@@ -171,9 +171,45 @@ describe("resolveCopilotCredential", () => {
     expect(credential).toEqual({ token: "gho_plain", host: HOST, source: "config" });
   });
 
+  it("lets a stored login beat the GITHUB_TOKEN Codespaces injects", async () => {
+    const env = { CODESPACES: "true", GITHUB_TOKEN: "ghu_injected" };
+    expect(await resolveCopilotCredential(sources({ env, readSecret: async () => "gho_stored" })))
+      .toEqual({ token: "gho_stored", host: HOST, source: "keychain" });
+    expect(await resolveCopilotCredential(sources({ env, readGhToken: async () => "gho_gh" })))
+      .toEqual({ token: "ghu_injected", host: HOST, source: "GITHUB_TOKEN" });
+  });
+
+  it("still honours explicitly set tokens in Codespaces", async () => {
+    const stored = { readSecret: async () => "gho_stored" };
+    expect(await resolveCopilotCredential(sources({
+      ...stored,
+      env: { CODESPACES: "true", GITHUB_TOKEN: "ghu_mine" },
+      explicitEnv: new Set(["GITHUB_TOKEN"]),
+    }))).toMatchObject({ token: "ghu_mine", source: "GITHUB_TOKEN" });
+    expect(await resolveCopilotCredential(sources({
+      ...stored,
+      env: { CODESPACES: "true", GITHUB_TOKEN: "ghu_injected", GH_TOKEN: "gho_exported" },
+    }))).toMatchObject({ token: "gho_exported", source: "GH_TOKEN" });
+  });
+
+  it("falls back to the GitHub CLI token for the target host", async () => {
+    const readGhToken = vi.fn(async () => "gho_gh\n");
+    expect(await resolveCopilotCredential(sources({ readConfig: () => null, readGhToken })))
+      .toEqual({ token: "gho_gh", host: HOST, source: "gh" });
+    expect(readGhToken).toHaveBeenLastCalledWith("github.com");
+
+    await resolveCopilotCredential(sources({ env: { GH_HOST: "acme.ghe.com" }, readGhToken }));
+    expect(readGhToken).toHaveBeenLastCalledWith("acme.ghe.com");
+
+    readGhToken.mockClear();
+    await resolveCopilotCredential(sources({ readSecret: async () => "gho_stored", readGhToken }));
+    expect(readGhToken).not.toHaveBeenCalled();
+  });
+
   it("returns null when nobody is signed in", async () => {
     expect(await resolveCopilotCredential(sources({ readConfig: () => null }))).toBeNull();
     expect(await resolveCopilotCredential(sources())).toBeNull();
+    expect(await resolveCopilotCredential(sources({ readGhToken: async () => null }))).toBeNull();
   });
 });
 

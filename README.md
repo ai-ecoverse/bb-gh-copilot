@@ -71,12 +71,19 @@ bb gh-copilot usage --json   # the raw provider-usage measurement
 ```
 
 The numbers come from `GET /copilot_internal/user`, the call Copilot CLI makes
-at session start, authenticated as the CLI is: `COPILOT_GITHUB_TOKEN`,
-`GH_TOKEN`, or `GITHUB_TOKEN` (from the managed entry's `env`, then the bb
-environment), otherwise the last `copilot login` account from the OS keychain
-(macOS Keychain or libsecret, service `copilot-cli`) or the CLI's plaintext
-token store. `COPILOT_GH_HOST` / `GH_HOST` select a GHE.com or GHES host. The
-token is only sent to that GitHub host. Readings are cached for a minute.
+at session start, authenticated the way the CLI
+[resolves credentials](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli#how-copilot-cli-stores-credentials):
+
+1. `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`, from the managed
+   entry's `env` and then the bb environment. In Codespaces, the `GITHUB_TOKEN`
+   bb inherits yields to a stored login, as it does for the CLI.
+2. The last `copilot login` account, from the OS keychain (service
+   `copilot-cli`: macOS Keychain, libsecret, or Windows Credential Manager) or
+   the CLI's plaintext token store.
+3. `gh auth token` for the host.
+
+`COPILOT_GH_HOST` / `GH_HOST` select a GHE.com or GHES host. The token is only
+sent to that GitHub host. Readings are cached for a minute.
 
 Quota is read on the machine running the bb server, so it is listed for that
 machine only.
@@ -130,9 +137,10 @@ npm run build
 `src/agent-entry.ts` holds the pure entry-building logic — what the managed
 entry looks like, how it is merged into an existing `customAgents` array, and
 what is safe to remove. `src/copilot-usage.ts` resolves the Copilot login and
-turns GitHub's quota report into a usage measurement; `src/usage-source.ts`
-publishes it over RPC; `src/usage-contract.ts` is bb's contract, copied verbatim.
-`npm test` (vitest) covers all three. `server.ts` keeps the side effects:
+turns GitHub's quota report into a usage measurement; `src/credential-store.ts`
+reads the OS keychain and `gh`; `src/usage-source.ts` publishes the measurement
+over RPC; `src/usage-contract.ts` is bb's contract, copied verbatim. `npm test`
+(vitest) covers all of them. `server.ts` keeps the side effects:
 locating the CLI, reading and writing the setting, the keychain lookup, the CLI
 commands.
 

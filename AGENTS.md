@@ -70,7 +70,7 @@ Run from the repo root, on a clean tree, at the commit you intend to tag.
 
 ```sh
 npm run typecheck        # tsc --noEmit
-npm test                 # vitest run  -> 3 files, 34 tests
+npm test                 # vitest run  -> 4 files, 43 tests
 bb plugin build .        # writes dist/server.js, .map, server.meta.json, app.js, app.css, app.meta.json, package.json
 git diff --quiet -- dist/ || { echo "STALE dist/ — commit the rebuild"; exit 1; }
 ```

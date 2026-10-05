@@ -16,5 +16,5 @@ function CopilotIcon({ className }: { className?: string }) {
 }
 
 export default definePluginApp((app) => {
-  app.slots.experimental_providerIcon({ providerId: "acp-gh-copilot", icon: CopilotIcon });
+  app.slots.experimental_providerIcon({ providerKind: "agent", providerId: "acp-gh-copilot", icon: CopilotIcon });
 });

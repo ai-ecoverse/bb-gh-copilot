@@ -198,6 +198,19 @@ describe("parseCopilotUser", () => {
     ]);
   });
 
+  it("skips a null premium_models alias and keeps the port in account keys", () => {
+    const reading = parseCopilotUser({
+      id: 7,
+      quota_snapshots: {
+        premium_models: null,
+        premium_interactions: { unlimited: false, percent_remaining: 40 },
+      },
+    }, "https://git.example:8443");
+    expect(reading.accountKey).toBe("git.example:8443:copilot-user:7");
+    if (reading.usage.status !== "ok") throw new Error("expected ok");
+    expect(reading.usage.windows.map((w) => [w.id, w.usedPercent])).toEqual([["premium_interactions", 60]]);
+  });
+
   it("reports a finite snapshot without quota as exhausted", () => {
     const reading = parseCopilotUser({
       quota_snapshots: {

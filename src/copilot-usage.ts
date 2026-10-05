@@ -142,8 +142,8 @@ function quotaUsage(
   const defaultReset = isoTimestamp(user.quota_reset_date_utc)
     ?? isoTimestamp(user.quota_reset_date)
     ?? isoTimestamp(user.limited_user_reset_date);
-  const raw = snapshotKeys.map((key) => user.quota_snapshots?.[key]).find((value) => value !== undefined);
-  if (raw !== undefined) {
+  const raw = snapshotKeys.map((key) => user.quota_snapshots?.[key]).find((value) => value != null);
+  if (raw != null) {
     const snapshot = snapshotSchema.safeParse(raw);
     if (!snapshot.success) return null;
     const { unlimited, entitlement, has_quota: hasQuota } = snapshot.data;
@@ -203,7 +203,7 @@ export function parseCopilotUser(payload: unknown, host: string): CopilotUsageRe
   });
   const planId = user.access_type_sku === "free_limited_copilot" ? "free" : (user.copilot_plan ?? null);
   return {
-    accountKey: user.id === undefined ? null : `${new URL(host).hostname}:copilot-user:${user.id}`,
+    accountKey: user.id === undefined ? null : `${new URL(host).host}:copilot-user:${user.id}`,
     usage: {
       status: "ok",
       plan: planId === null ? null : { id: planId, multiplier: null },

@@ -1,4 +1,5 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { execFile } from "node:child_process";
 import {
   accessSync,
   chmodSync,
@@ -27,6 +28,12 @@ import {
   type CustomAgent,
   type JsonObject,
 } from "./src/agent-entry.js";
+import {
+  readCopilotUsage,
+  resolveCopilotCredential,
+  type CopilotUsage,
+} from "./src/copilot-usage.js";
+import { registerUsageSource } from "./src/usage-source.js";
 
 const SETTINGS_READY_ATTEMPTS = 10;
 const SETTINGS_READY_DELAY_MS = 500;
@@ -82,6 +89,42 @@ function writeAtomic(path: string, value: JsonObject): void {
   } finally {
     rmSync(temporary, { force: true });
   }
+}
+
+function readSecret(service: string, account: string): Promise<string | null> {
+  const lookup: [string, string[]] | null = process.platform === "darwin"
+    ? ["security", ["find-generic-password", "-s", service, "-a", account, "-w"]]
+    : process.platform === "linux"
+      ? ["secret-tool", ["lookup", "service", service, "account", account]]
+      : null;
+  if (lookup === null) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    execFile(lookup[0], lookup[1], { timeout: 5_000, encoding: "utf8" }, (error, stdout) => {
+      resolve(error ? null : stdout.trim() || null);
+    });
+  });
+}
+
+function readCopilotConfig(env: Record<string, string | undefined>): string | null {
+  const configPath = join(env.COPILOT_HOME || join(homedir(), ".copilot"), "config.json");
+  try {
+    return readFileSync(configPath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function formatUsage(usage: CopilotUsage): string {
+  if (usage.status === "not_installed") return `${PROFILE.binary} was not found. ${PROFILE.installHint}\n`;
+  if (usage.status === "unauthenticated") return "Not signed in. Run `copilot login`.\n";
+  if (usage.status === "expired") return "GitHub rejected the stored Copilot login. Run `copilot login` again.\n";
+  if (usage.status === "error") return `${usage.message}\n`;
+  const lines = [`Plan: ${usage.planLabel ?? "unknown"}`];
+  if (usage.windows.length === 0) lines.push("No quota limits reported.");
+  for (const window of usage.windows) {
+    lines.push(`${window.label}: ${window.usedPercent}% used${window.resetsAt ? `, resets ${window.resetsAt}` : ""}`);
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 function readLegacyAgents(dataDir: string): CustomAgent[] {
@@ -197,6 +240,27 @@ export default function plugin(bb: BbPluginApi) {
     return changed;
   }
 
+  async function currentEntry(): Promise<CustomAgent | undefined> {
+    const settingAgents = await readSettingAgents();
+    return (settingAgents === null ? undefined : findOwnAgent(settingAgents))
+      ?? findOwnAgent(readLegacyAgents(await dataDir()));
+  }
+
+  const usage = registerUsageSource(bb, async () => {
+    const entry = await currentEntry();
+    // Copilot runs with the managed entry's env layered over the inherited
+    // one, so a token configured there wins exactly as it does for the CLI.
+    const agentEnv = isObject(entry?.env)
+      ? Object.fromEntries(Object.entries(entry.env).filter((pair): pair is [string, string] => typeof pair[1] === "string"))
+      : {};
+    const env = { ...process.env, ...agentEnv };
+    return readCopilotUsage({
+      binary: findBinary(entry),
+      credential: () => resolveCopilotCredential({ env, readConfig: () => readCopilotConfig(env), readSecret }),
+      fetch: (input, init) => fetch(input, init),
+    });
+  });
+
   bb.background.service("provision", {
     async start() {
       try {
@@ -219,6 +283,7 @@ export default function plugin(bb: BbPluginApi) {
     summary: `Manage the ${PROFILE.displayName} ACP provider.`,
     commands: [
       { name: "status", summary: "Check the CLI and bb provider registration", usage: `${PROFILE.id} status` },
+      { name: "usage", summary: "Show Copilot premium-request and chat quota", usage: `${PROFILE.id} usage [--json]` },
       { name: "repair", summary: "Rewrite and reload the managed ACP configuration", usage: `${PROFILE.id} repair` },
       { name: "unregister", summary: "Remove this plugin's managed ACP configuration", usage: `${PROFILE.id} unregister` },
     ],
@@ -231,6 +296,16 @@ export default function plugin(bb: BbPluginApi) {
         } catch (error) {
           return { exitCode: 1, stderr: `${String(error)}\n` };
         }
+      }
+      if (command === "usage") {
+        const measurement = await usage.collect(true);
+        const ok = measurement.usage.status === "ok";
+        if (argv.includes("--json")) {
+          return { exitCode: ok ? 0 : 1, stdout: `${JSON.stringify(measurement, null, 2)}\n` };
+        }
+        return ok
+          ? { exitCode: 0, stdout: formatUsage(measurement.usage) }
+          : { exitCode: 1, stderr: formatUsage(measurement.usage) };
       }
       if (command === "unregister") {
         try {

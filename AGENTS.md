@@ -70,15 +70,15 @@ Run from the repo root, on a clean tree, at the commit you intend to tag.
 
 ```sh
 npm run typecheck        # tsc --noEmit
-npm test                 # vitest run  -> 1 file, 15 tests
-bb plugin build .        # writes dist/server.js, .map, server.meta.json, app.js, app.css, app.meta.json
+npm test                 # vitest run  -> 3 files, 34 tests
+bb plugin build .        # writes dist/server.js, .map, server.meta.json, app.js, app.css, app.meta.json, package.json
 git diff --quiet -- dist/ || { echo "STALE dist/ — commit the rebuild"; exit 1; }
 ```
 
 All four pass on `153a012`. The build is byte-reproducible here: `git status
 --porcelain` was empty before and after `bb plugin build .`.
 
-On `dist/`: it *is* committed (6 files tracked). It is **not** what marketplace
+On `dist/`: it *is* committed (7 files tracked). It is **not** what marketplace
 users run. A git-source install runs `npm install` and recompiles both bundles,
 and a committed `dist/` is always replaced by the bundles bb builds. So a stale
 `dist/` does not ship broken code to marketplace users — but a build that
@@ -99,6 +99,7 @@ cat dist/server.meta.json   # pluginId: gh-copilot, pluginVersion must equal pac
 bb plugin install . --yes          # path install; keeps existing settings
 bb plugin list | grep -A3 '^gh-copilot'
 bb gh-copilot status
+bb gh-copilot usage                # quota via copilot_internal/user; exit 0 when readable
 bb provider list | grep -i copilot
 bb plugin logs gh-copilot -n 30
 ```

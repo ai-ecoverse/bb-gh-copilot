@@ -58,10 +58,34 @@ bb's thread permission mode becomes a Copilot launch flag:
 | Accept edits | `--allow-tool=write` — file writes run unattended, shell and URLs still ask |
 | Full access  | `--allow-all` |
 
+## Quota
+
+The plugin reports your Copilot quota — premium requests, plus chat and code
+completions on plans that cap them — through bb's `provider-usage.v1` usage
+source contract, so it shows up in bb's **Provider usage** panel next to Codex
+and Claude Code. Unlimited quotas are left out rather than shown as 0%.
+
+```bash
+bb gh-copilot usage          # Plan: Business / Premium requests: 5% used, resets …
+bb gh-copilot usage --json   # the raw provider-usage measurement
+```
+
+The numbers come from `GET /copilot_internal/user`, the call Copilot CLI makes
+at session start, authenticated as the CLI is: `COPILOT_GITHUB_TOKEN`,
+`GH_TOKEN`, or `GITHUB_TOKEN` (from the managed entry's `env`, then the bb
+environment), otherwise the last `copilot login` account from the OS keychain
+(macOS Keychain or libsecret, service `copilot-cli`) or the CLI's plaintext
+token store. `COPILOT_GH_HOST` / `GH_HOST` select a GHE.com or GHES host. The
+token is only sent to that GitHub host. Readings are cached for a minute.
+
+Quota is read on the machine running the bb server, so it is listed for that
+machine only.
+
 ## Check or repair
 
 ```bash
 bb gh-copilot status
+bb gh-copilot usage
 bb gh-copilot repair
 bb provider models acp-gh-copilot
 ```
@@ -105,11 +129,14 @@ npm run build
 
 `src/agent-entry.ts` holds the pure entry-building logic — what the managed
 entry looks like, how it is merged into an existing `customAgents` array, and
-what is safe to remove. `npm test` (vitest) covers it. `server.ts` keeps the
-side effects: locating the CLI, reading and writing the setting, the CLI
+what is safe to remove. `src/copilot-usage.ts` resolves the Copilot login and
+turns GitHub's quota report into a usage measurement; `src/usage-source.ts`
+publishes it over RPC; `src/usage-contract.ts` is bb's contract, copied verbatim.
+`npm test` (vitest) covers all three. `server.ts` keeps the side effects:
+locating the CLI, reading and writing the setting, the keychain lookup, the CLI
 commands.
 
-The plugin requires bb 0.40+ and plugin SDK 0.4.8+.
+The plugin requires bb 0.40+ and plugin SDK 0.4.94+.
 
 ## License
 

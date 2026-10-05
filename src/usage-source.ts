@@ -64,7 +64,11 @@ export function registerUsageSource(
     }
     const ok = reading.usage.status === "ok";
     const value = usageMeasurementSchema.parse({
-      accountKey: reading.accountKey ?? previous?.accountKey ?? null,
+      // Only a failed read keeps the last known account; any other result
+      // speaks for the current credential, whose identity may be unknown.
+      accountKey: reading.usage.status === "error"
+        ? (reading.accountKey ?? previous?.accountKey ?? null)
+        : reading.accountKey,
       observedAt: ok ? now() : (previous?.observedAt ?? null),
       usage: reading.usage,
     });

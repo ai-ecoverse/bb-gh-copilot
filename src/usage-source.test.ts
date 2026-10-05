@@ -102,6 +102,17 @@ describe("registerUsageSource", () => {
     });
   });
 
+  it("does not carry an account key over to a successful anonymous read", async () => {
+    const { bb, call } = fakeBb();
+    const read = vi.fn<() => Promise<CopilotUsageReading>>()
+      .mockResolvedValueOnce(OK)
+      .mockResolvedValueOnce({ ...OK, accountKey: null });
+    registerUsageSource(bb, read, () => 5);
+    await call(usageFetchMethod, { resourceId: RESOURCE_ID, refresh: true });
+    expect(await call(usageFetchMethod, { resourceId: RESOURCE_ID, refresh: true }))
+      .toMatchObject({ accountKey: null, usage: { status: "ok" } });
+  });
+
   it("rejects resources it did not list", async () => {
     const { bb, call } = fakeBb();
     registerUsageSource(bb, async () => OK);

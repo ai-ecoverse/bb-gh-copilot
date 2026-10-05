@@ -211,6 +211,19 @@ describe("parseCopilotUser", () => {
     expect(reading.usage.windows.map((w) => [w.id, w.usedPercent])).toEqual([["premium_interactions", 60]]);
   });
 
+  it("treats null quota containers and ids as absent", () => {
+    const reading = parseCopilotUser({
+      id: null,
+      quota_snapshots: null,
+      limited_user_quotas: { chat: 25 },
+      monthly_quotas: { chat: 50 },
+    }, HOST);
+    expect(reading.accountKey).toBeNull();
+    if (reading.usage.status !== "ok") throw new Error("expected ok");
+    expect(reading.usage.windows.map((w) => [w.id, w.usedPercent])).toEqual([["chat", 50]]);
+    expect(parseCopilotUser({ limited_user_quotas: null, monthly_quotas: null }, HOST).usage.status).toBe("ok");
+  });
+
   it("reports a finite snapshot without quota as exhausted", () => {
     const reading = parseCopilotUser({
       quota_snapshots: {

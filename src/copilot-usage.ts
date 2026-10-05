@@ -73,7 +73,7 @@ const snapshotSchema = z.object({
 }).passthrough();
 
 const copilotUserSchema = z.object({
-  id: z.union([z.number(), z.string()]).optional(),
+  id: nullable(z.union([z.number(), z.string()])),
   copilot_plan: nullable(z.string().min(1)),
   // Free accounts report the generic `individual` plan; the SKU tells them apart.
   access_type_sku: nullable(z.string()),
@@ -81,10 +81,10 @@ const copilotUserSchema = z.object({
   token_based_billing: nullable(z.boolean()),
   quota_reset_date_utc: z.unknown().optional(),
   quota_reset_date: z.unknown().optional(),
-  quota_snapshots: z.record(z.string(), z.unknown()).optional(),
+  quota_snapshots: nullable(z.record(z.string(), z.unknown())),
   // Legacy Copilot Free: remaining and monthly allowance per category.
-  limited_user_quotas: z.record(z.string(), z.unknown()).optional(),
-  monthly_quotas: z.record(z.string(), z.unknown()).optional(),
+  limited_user_quotas: nullable(z.record(z.string(), z.unknown())),
+  monthly_quotas: nullable(z.record(z.string(), z.unknown())),
   limited_user_reset_date: z.unknown().optional(),
 }).passthrough();
 

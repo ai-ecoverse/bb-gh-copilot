@@ -201,7 +201,8 @@ export function parseCopilotUser(payload: unknown, host: string): CopilotUsageRe
     const shown = id === "premium_interactions" && credits ? "AI credits" : label;
     return [{ kind: "custom" as const, id, label: shown, ...used, model: null, cost: null }];
   });
-  const planId = user.access_type_sku === "free_limited_copilot" ? "free" : (user.copilot_plan ?? null);
+  // e.g. free_limited_copilot, free_educational_quota
+  const planId = user.access_type_sku?.startsWith("free_") ? "free" : (user.copilot_plan ?? null);
   return {
     accountKey: user.id === undefined ? null : `${new URL(host).host}:copilot-user:${user.id}`,
     usage: {

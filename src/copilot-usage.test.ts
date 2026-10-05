@@ -87,6 +87,9 @@ describe("parseCopilotUser", () => {
     if (free.usage.status !== "ok") throw new Error("expected ok");
     expect(free.usage.plan).toEqual({ id: "free", multiplier: null });
     expect(free.usage.planLabel).toBe("Free");
+    const educational = parseCopilotUser({ copilot_plan: "individual", access_type_sku: "free_educational_quota" }, HOST);
+    if (educational.usage.status !== "ok") throw new Error("expected ok");
+    expect(educational.usage.planLabel).toBe("Free");
 
     const credits = parseCopilotUser({
       copilot_plan: "business",

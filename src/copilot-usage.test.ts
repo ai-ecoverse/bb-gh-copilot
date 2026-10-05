@@ -198,6 +198,21 @@ describe("parseCopilotUser", () => {
     ]);
   });
 
+  it("reports a finite snapshot without quota as exhausted", () => {
+    const reading = parseCopilotUser({
+      quota_snapshots: {
+        premium_interactions: { unlimited: false, entitlement: 300, has_quota: false },
+        chat: { unlimited: false, entitlement: 50, has_quota: false, percent_remaining: 20 },
+        completions: { unlimited: false, entitlement: 0, has_quota: false },
+      },
+    }, HOST);
+    if (reading.usage.status !== "ok") throw new Error("expected ok");
+    expect(reading.usage.windows.map((w) => [w.id, w.usedPercent])).toEqual([
+      ["premium_interactions", 100],
+      ["chat", 100],
+    ]);
+  });
+
   it("reads epoch-second reset times and never drops a quota over its reset field", () => {
     const reading = parseCopilotUser({
       quota_reset_date_utc: false,

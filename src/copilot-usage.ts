@@ -158,7 +158,12 @@ function quotaUsage(
       return hasQuota === false ? { usedPercent: 100, resetsAt, credits } : null;
     }
     // A zero entitlement (e.g. Free's premium requests) is no allowance, not a spent one.
-    if (remaining === undefined || entitlement === 0) return null;
+    if (entitlement === 0) return null;
+    // has_quota false blocks further requests, whatever the percentage says.
+    if (hasQuota === false) {
+      return { usedPercent: round2(Math.max(100, 100 - (remaining ?? 100))), resetsAt, credits };
+    }
+    if (remaining === undefined) return null;
     return {
       // Negative remaining means overage; the contract allows more than 100.
       usedPercent: round2(Math.max(0, 100 - remaining)),

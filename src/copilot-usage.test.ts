@@ -258,6 +258,28 @@ describe("resolveCopilotCredential", () => {
     expect(readGhToken).not.toHaveBeenCalled();
   });
 
+  it("only uses a stored login for the overriding host", async () => {
+    const multi = JSON.stringify({
+      lastLoggedInUser: { host: "https://ghes.example", login: "octo-ghes" },
+      loggedInUsers: [
+        { host: "https://ghes.example", login: "octo-ghes" },
+        { host: HOST, login: "octocat" },
+      ],
+    });
+    const readSecret = vi.fn(async (_service: string, account: string) => `gho_${account.split(":").at(-1)}`);
+    expect(await resolveCopilotCredential(sources({ readConfig: () => multi, readSecret })))
+      .toEqual({ token: "gho_octo-ghes", host: "https://ghes.example", source: "keychain" });
+    expect(await resolveCopilotCredential(sources({
+      readConfig: () => multi, readSecret, env: { GH_HOST: "ghes.example", COPILOT_GH_HOST: "github.com" },
+    }))).toEqual({ token: "gho_octocat", host: HOST, source: "keychain" });
+
+    const readGhToken = vi.fn(async () => "gho_gh");
+    expect(await resolveCopilotCredential(sources({
+      readConfig: () => multi, readSecret, readGhToken, env: { COPILOT_GH_HOST: "acme.ghe.com" },
+    }))).toEqual({ token: "gho_gh", host: "https://acme.ghe.com", source: "gh" });
+    expect(readGhToken).toHaveBeenCalledWith("acme.ghe.com");
+  });
+
   it("skips classic PATs the way an interactive CLI does", async () => {
     expect(await resolveCopilotCredential(sources({
       env: { COPILOT_GITHUB_TOKEN: "ghp_classic", GH_TOKEN: "github_pat_fine" },

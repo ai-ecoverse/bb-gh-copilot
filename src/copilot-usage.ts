@@ -237,10 +237,28 @@ export function parseCopilotConfig(text: string | null): Record<string, unknown>
   }
 }
 
+type StoredUser = z.infer<typeof loggedInUserSchema>;
+
+/**
+ * The stored login to use: the last signed-in user, unless a host override
+ * points elsewhere, in which case the signed-in user for that host, if any.
+ */
+function storedUser(config: Record<string, unknown>, hostOverride: string | null): StoredUser | null {
+  const parse = (value: unknown) => {
+    const user = loggedInUserSchema.safeParse(value);
+    return user.success ? user.data : null;
+  };
+  const last = parse(config.lastLoggedInUser ?? config.last_logged_in_user);
+  if (hostOverride === null) return last;
+  const others = config.loggedInUsers ?? config.logged_in_users;
+  return [last, ...(Array.isArray(others) ? others.map(parse) : [])]
+    .find((user) => user !== null && normalizeHost(user.host) === hostOverride) ?? null;
+}
+
 async function storedLogin(
   sources: CredentialSources,
   config: Record<string, unknown>,
-  lastUser: { host: string; login: string } | null,
+  lastUser: StoredUser | null,
 ): Promise<CopilotCredential | null> {
   if (lastUser === null) return null;
   const host = normalizeHost(lastUser.host);
@@ -267,13 +285,13 @@ async function storedLogin(
  * the plaintext `copilot_tokens` fallback written when no keychain is
  * available), then `gh auth token`. In Codespaces the automatically injected
  * `GITHUB_TOKEN` does not override a stored login, so an inherited one is
- * tried after it. Classic PATs are skipped wherever they turn up.
+ * tried after it. A `COPILOT_GH_HOST`/`GH_HOST` override only uses a login
+ * stored for that host. Classic PATs are skipped wherever they turn up.
  */
 export async function resolveCopilotCredential(sources: CredentialSources): Promise<CopilotCredential | null> {
   const config = parseCopilotConfig(sources.readConfig());
-  const parsedUser = loggedInUserSchema.safeParse(config.lastLoggedInUser ?? config.last_logged_in_user);
-  const lastUser = parsedUser.success ? parsedUser.data : null;
   const envHost = normalizeHost(sources.env.COPILOT_GH_HOST) ?? normalizeHost(sources.env.GH_HOST);
+  const lastUser = storedUser(config, envHost);
   const host = envHost ?? (lastUser ? normalizeHost(lastUser.host) : null) ?? DEFAULT_HOST;
   const inCodespace = Boolean(sources.env.CODESPACES);
 

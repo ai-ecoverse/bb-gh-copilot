@@ -47,16 +47,25 @@ const PLAN_LABELS: Record<string, string> = {
   enterprise: "Enterprise",
 };
 
+const numeric = z.union([z.number(), z.string()]).transform(Number).pipe(z.number().finite());
+
 const snapshotSchema = z.object({
   unlimited: z.boolean().optional(),
   percent_remaining: z.number().finite().optional(),
+  entitlement: numeric.optional(),
+  quota_reset_at: z.string().optional(),
 }).passthrough();
 
 const copilotUserSchema = z.object({
   id: z.union([z.number(), z.string()]).optional(),
   copilot_plan: z.string().min(1).optional(),
   quota_reset_date_utc: z.string().min(1).optional(),
+  quota_reset_date: z.string().min(1).optional(),
   quota_snapshots: z.record(z.string(), z.unknown()).optional(),
+  // Legacy Copilot Free: remaining and monthly allowance per category.
+  limited_user_quotas: z.record(z.string(), z.unknown()).optional(),
+  monthly_quotas: z.record(z.string(), z.unknown()).optional(),
+  limited_user_reset_date: z.string().min(1).optional(),
 }).passthrough();
 
 const ACCOUNT_FIELDS = { plan: null, accountEmail: null, planLabel: null } as const;
@@ -90,31 +99,57 @@ export function apiBaseUrl(host: string): string {
   return `${url.origin}/api/v3`;
 }
 
+function isoTimestamp(value: string | undefined): string | null {
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? null : new Date(time).toISOString();
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+type CopilotUser = z.infer<typeof copilotUserSchema>;
+
+/** Percentage used for one quota category, or null when it has no finite limit. */
+function quotaUsage(user: CopilotUser, id: string): { usedPercent: number; resetsAt: string | null } | null {
+  const defaultReset = isoTimestamp(user.quota_reset_date_utc ?? user.quota_reset_date ?? user.limited_user_reset_date);
+  const raw = user.quota_snapshots?.[id];
+  if (raw !== undefined) {
+    const snapshot = snapshotSchema.safeParse(raw);
+    if (!snapshot.success) return null;
+    const { unlimited, percent_remaining: remaining, entitlement } = snapshot.data;
+    // A zero entitlement (e.g. Free's premium requests) is no allowance, not a spent one.
+    if (unlimited === true || remaining === undefined || entitlement === 0) return null;
+    return {
+      // Negative remaining means overage; the contract allows more than 100.
+      usedPercent: round2(Math.max(0, 100 - remaining)),
+      resetsAt: isoTimestamp(snapshot.data.quota_reset_at) ?? defaultReset,
+    };
+  }
+  const monthly = numeric.safeParse(user.monthly_quotas?.[id]);
+  const left = numeric.safeParse(user.limited_user_quotas?.[id]);
+  if (!monthly.success || !left.success || monthly.data <= 0) return null;
+  return {
+    usedPercent: round2(Math.max(0, 100 - (left.data / monthly.data) * 100)),
+    resetsAt: defaultReset,
+  };
+}
+
 /**
  * Copilot's own quota report (`GET /copilot_internal/user`, the call the CLI
- * makes at session start) as a provider-usage measurement. Unlimited quotas
- * and snapshots without a percentage are left out rather than shown as 0%.
+ * makes at session start) as a provider-usage measurement. `quota_snapshots`
+ * win; legacy Free accounts report `limited_user_quotas` against
+ * `monthly_quotas` instead. Unlimited quotas, zero allowances, and snapshots
+ * without a percentage are left out rather than shown as 0% or 100%.
  */
 export function parseCopilotUser(payload: unknown, host: string): CopilotUsageReading {
   const parsed = copilotUserSchema.safeParse(payload);
   if (!parsed.success) return usageError("GitHub returned an unrecognised Copilot quota response.");
   const user = parsed.data;
-  const resetsAt = user.quota_reset_date_utc ?? null;
   const windows = QUOTAS.flatMap(([id, label]) => {
-    const snapshot = snapshotSchema.safeParse(user.quota_snapshots?.[id]);
-    if (!snapshot.success) return [];
-    const { unlimited, percent_remaining: remaining } = snapshot.data;
-    if (unlimited === true || remaining === undefined) return [];
-    return [{
-      kind: "custom" as const,
-      id,
-      label,
-      // Negative remaining means overage; the contract allows more than 100.
-      usedPercent: Math.round(Math.max(0, 100 - remaining) * 100) / 100,
-      resetsAt,
-      model: null,
-      cost: null,
-    }];
+    const quota = quotaUsage(user, id);
+    return quota === null ? [] : [{ kind: "custom" as const, id, label, ...quota, model: null, cost: null }];
   });
   const planId = user.copilot_plan ?? null;
   return {

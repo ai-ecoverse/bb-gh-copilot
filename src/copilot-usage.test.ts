@@ -59,7 +59,7 @@ describe("parseCopilotUser", () => {
     expect(usageMeasurementSchema.safeParse({ ...reading, observedAt: 1 }).success).toBe(true);
   });
 
-  it("reports chat and completion limits on Free and labels individual plans", () => {
+  it("reports chat and completion snapshot limits and labels individual plans", () => {
     const reading = parseCopilotUser({
       id: 1,
       copilot_plan: "individual",
@@ -85,6 +85,43 @@ describe("parseCopilotUser", () => {
       accountKey: null,
       usage: { status: "ok", plan: null, accountEmail: null, planLabel: null, windows: [] },
     });
+  });
+
+  it("reads legacy Free allowances and normalizes the reset date", () => {
+    const reading = parseCopilotUser({
+      id: 2,
+      copilot_plan: "free",
+      limited_user_quotas: { chat: 10, completions: 1500 },
+      monthly_quotas: { chat: 50, completions: "2000" },
+      limited_user_reset_date: "2026-11-05",
+      quota_snapshots: {
+        // Free has no premium allowance: zero entitlement, not 100% spent.
+        premium_interactions: { percent_remaining: 0, unlimited: false, entitlement: 0 },
+      },
+    }, HOST);
+    expect(reading.usage.status).toBe("ok");
+    if (reading.usage.status !== "ok") return;
+    expect(reading.usage.planLabel).toBe("Free");
+    expect(reading.usage.windows.map((w) => [w.id, w.usedPercent, w.resetsAt])).toEqual([
+      ["chat", 80, "2026-11-05T00:00:00.000Z"],
+      ["completions", 25, "2026-11-05T00:00:00.000Z"],
+    ]);
+    expect(usageMeasurementSchema.safeParse({ ...reading, observedAt: 1 }).success).toBe(true);
+  });
+
+  it("prefers snapshots over legacy fields and per-snapshot reset times", () => {
+    const reading = parseCopilotUser({
+      quota_reset_date_utc: "2026-11-01T00:00:00.000Z",
+      limited_user_quotas: { chat: 0 },
+      monthly_quotas: { chat: 50 },
+      quota_snapshots: {
+        chat: { percent_remaining: 70, unlimited: false, quota_reset_at: "2026-10-06T12:00:00Z" },
+      },
+    }, HOST);
+    if (reading.usage.status !== "ok") throw new Error("expected ok");
+    expect(reading.usage.windows.map((w) => [w.id, w.usedPercent, w.resetsAt])).toEqual([
+      ["chat", 30, "2026-10-06T12:00:00.000Z"],
+    ]);
   });
 
   it("rejects a non-object payload", () => {

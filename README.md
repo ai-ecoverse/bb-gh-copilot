@@ -60,8 +60,9 @@ bb's thread permission mode becomes a Copilot launch flag:
 
 ## Quota
 
-The plugin reports your Copilot quota — premium requests, plus chat and code
-completions on plans that cap them — through bb's `provider-usage.v1` usage
+The plugin reports your Copilot quota — premium requests (labelled AI credits
+on token-billed accounts), plus chat and code completions on plans that cap
+them — through bb's `provider-usage.v1` usage
 source contract, so it shows up in bb's **Provider usage** panel next to Codex
 and Claude Code. Unlimited quotas are left out rather than shown as 0%.
 

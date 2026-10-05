@@ -69,6 +69,10 @@ const snapshotSchema = z.object({
 const copilotUserSchema = z.object({
   id: z.union([z.number(), z.string()]).optional(),
   copilot_plan: z.string().min(1).optional(),
+  // Free accounts report the generic `individual` plan; the SKU tells them apart.
+  access_type_sku: z.string().optional(),
+  // AI-credit billing replaced request-based billing; legacy plans keep requests.
+  token_based_billing: z.boolean().optional(),
   quota_reset_date_utc: z.unknown().optional(),
   quota_reset_date: z.unknown().optional(),
   quota_snapshots: z.record(z.string(), z.unknown()).optional(),
@@ -177,9 +181,10 @@ export function parseCopilotUser(payload: unknown, host: string): CopilotUsageRe
   const user = parsed.data;
   const windows = QUOTAS.flatMap(([id, label, snapshotKeys]) => {
     const quota = quotaUsage(user, id, snapshotKeys);
-    return quota === null ? [] : [{ kind: "custom" as const, id, label, ...quota, model: null, cost: null }];
+    const shown = id === "premium_interactions" && user.token_based_billing === true ? "AI credits" : label;
+    return quota === null ? [] : [{ kind: "custom" as const, id, label: shown, ...quota, model: null, cost: null }];
   });
-  const planId = user.copilot_plan ?? null;
+  const planId = user.access_type_sku === "free_limited_copilot" ? "free" : (user.copilot_plan ?? null);
   return {
     accountKey: user.id === undefined ? null : `${new URL(host).hostname}:copilot-user:${user.id}`,
     usage: {

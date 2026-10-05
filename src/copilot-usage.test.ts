@@ -79,6 +79,26 @@ describe("parseCopilotUser", () => {
     ]);
   });
 
+  it("labels Free by access SKU and token-billed premium quota as AI credits", () => {
+    const free = parseCopilotUser({
+      copilot_plan: "individual",
+      access_type_sku: "free_limited_copilot",
+    }, HOST);
+    if (free.usage.status !== "ok") throw new Error("expected ok");
+    expect(free.usage.plan).toEqual({ id: "free", multiplier: null });
+    expect(free.usage.planLabel).toBe("Free");
+
+    const credits = parseCopilotUser({
+      copilot_plan: "business",
+      token_based_billing: true,
+      quota_snapshots: { premium_interactions: { percent_remaining: 70, unlimited: false } },
+    }, HOST);
+    if (credits.usage.status !== "ok") throw new Error("expected ok");
+    expect(credits.usage.windows.map((w) => [w.id, w.label, w.usedPercent])).toEqual([
+      ["premium_interactions", "AI credits", 30],
+    ]);
+  });
+
   it("degrades to no windows rather than a fake 0%", () => {
     const reading = parseCopilotUser({ quota_snapshots: { premium_interactions: { unlimited: false } } }, HOST);
     expect(reading).toEqual({

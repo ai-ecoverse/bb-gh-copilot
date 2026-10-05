@@ -119,3 +119,28 @@ export function createGhTokenReader(run: CommandRunner, env: Record<string, stri
   return (hostname: string): Promise<string | null> =>
     run("gh", ["auth", "token", "--hostname", hostname], { timeoutMs: GH_TIMEOUT_MS, env: ghEnv });
 }
+
+/** Where Codespaces records the secrets, including `GITHUB_TOKEN`, it injects. */
+export const CODESPACES_ENV_FILES = [
+  "/workspaces/.codespaces/shared/.env-secrets",
+  "/workspaces/.codespaces/shared/.env",
+];
+
+/**
+ * The `GITHUB_TOKEN` values Codespaces injected, read from its env files.
+ * `.env-secrets` stores values base64-encoded, so both forms are returned.
+ */
+export function readInjectedGithubTokens(readFile: (path: string) => string | null): string[] {
+  const tokens = new Set<string>();
+  for (const path of CODESPACES_ENV_FILES) {
+    for (const line of (readFile(path) ?? "").split(/\r?\n/)) {
+      const match = /^\s*(?:export\s+)?GITHUB_TOKEN\s*=\s*["']?([^"'\s]+)["']?\s*$/.exec(line);
+      if (!match) continue;
+      const value = match[1]!;
+      tokens.add(value);
+      const decoded = Buffer.from(value, "base64").toString("utf8").trim();
+      if (/^[\w-]+$/.test(decoded)) tokens.add(decoded);
+    }
+  }
+  return [...tokens];
+}

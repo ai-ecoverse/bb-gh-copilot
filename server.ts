@@ -36,6 +36,7 @@ import {
 import {
   createGhTokenReader,
   createSecretReader,
+  readInjectedGithubTokens,
   type CommandRunner,
 } from "./src/credential-store.js";
 import { registerUsageSource } from "./src/usage-source.js";
@@ -104,13 +105,16 @@ const runCommand: CommandRunner = (file, args, options) => new Promise((resolve)
 
 const readSecret = createSecretReader(runCommand, process.platform);
 
-function readCopilotConfig(env: Record<string, string | undefined>): string | null {
-  const configPath = join(env.COPILOT_HOME || join(homedir(), ".copilot"), "config.json");
+function readTextFile(path: string): string | null {
   try {
-    return readFileSync(configPath, "utf8");
+    return readFileSync(path, "utf8");
   } catch {
     return null;
   }
+}
+
+function readCopilotConfig(env: Record<string, string | undefined>): string | null {
+  return readTextFile(join(env.COPILOT_HOME || join(homedir(), ".copilot"), "config.json"));
 }
 
 function formatUsage(usage: CopilotUsage): string {
@@ -258,6 +262,7 @@ export default function plugin(bb: BbPluginApi) {
       credential: () => resolveCopilotCredential({
         env,
         explicitEnv: new Set(Object.keys(agentEnv)),
+        injectedGithubTokens: () => readInjectedGithubTokens(readTextFile),
         readConfig: () => readCopilotConfig(env),
         readSecret,
         readGhToken: createGhTokenReader(runCommand, env),

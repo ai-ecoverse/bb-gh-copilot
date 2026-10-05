@@ -169,8 +169,9 @@ describe("parseCopilotUser", () => {
 
   it("derives the percentage from remaining and entitlement when it is missing", () => {
     const reading = parseCopilotUser({
+      copilot_plan: null,
       quota_snapshots: {
-        premium_interactions: { unlimited: false, entitlement: 300, remaining: 75 },
+        premium_interactions: { unlimited: false, entitlement: 300, remaining: 75, percent_remaining: null },
         chat: { unlimited: false, entitlement: "50", quota_remaining: 50 },
         completions: { unlimited: false, remaining: 10 },
       },
@@ -315,6 +316,15 @@ describe("resolveCopilotCredential", () => {
       ...stored,
       env: { CODESPACES: "true", GITHUB_TOKEN: "ghu_injected", GH_TOKEN: "gho_exported" },
     }))).toMatchObject({ token: "gho_exported", source: "GH_TOKEN" });
+  });
+
+  it("honours a GITHUB_TOKEN exported over the one Codespaces injected", async () => {
+    const env = { CODESPACES: "true", GITHUB_TOKEN: "ghu_mine" };
+    const stored = { readSecret: async () => "gho_stored" };
+    expect(await resolveCopilotCredential(sources({ ...stored, env, injectedGithubTokens: () => ["ghu_injected"] })))
+      .toMatchObject({ token: "ghu_mine", source: "GITHUB_TOKEN" });
+    expect(await resolveCopilotCredential(sources({ ...stored, env, injectedGithubTokens: () => ["ghu_mine"] })))
+      .toMatchObject({ token: "gho_stored", source: "keychain" });
   });
 
   it("falls back to the GitHub CLI token for the target host", async () => {

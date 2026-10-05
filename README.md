@@ -77,7 +77,9 @@ at session start, authenticated the way the CLI
 
 1. `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`, from the managed
    entry's `env` and then the bb environment. In Codespaces, the `GITHUB_TOKEN`
-   bb inherits yields to a stored login, as it does for the CLI.
+   Codespaces injected yields to a stored login, as it does for the CLI; one
+   you exported over it (it differs from the token recorded under
+   `/workspaces/.codespaces/shared/`) keeps its precedence.
 2. The last `copilot login` account, from the OS keychain (service
    `copilot-cli`: macOS Keychain, libsecret, or Windows Credential Manager) or
    the CLI's plaintext token store.

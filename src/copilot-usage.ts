@@ -53,14 +53,19 @@ const PLAN_LABELS: Record<string, string> = {
 
 const numeric = z.union([z.number(), z.string()]).transform(Number).pipe(z.number().finite());
 
+/** The SDK types these fields as nullable; null means absent. */
+function nullable<T extends z.ZodTypeAny>(schema: T) {
+  return schema.nullish().transform((value): z.output<T> | undefined => value ?? undefined);
+}
+
 const snapshotSchema = z.object({
-  unlimited: z.boolean().optional(),
-  percent_remaining: z.number().finite().optional(),
-  entitlement: numeric.optional(),
-  remaining: numeric.optional(),
-  quota_remaining: numeric.optional(),
-  has_quota: z.boolean().optional(),
-  token_based_billing: z.boolean().optional(),
+  unlimited: nullable(z.boolean()),
+  percent_remaining: nullable(z.number().finite()),
+  entitlement: nullable(numeric),
+  remaining: nullable(numeric),
+  quota_remaining: nullable(numeric),
+  has_quota: nullable(z.boolean()),
+  token_based_billing: nullable(z.boolean()),
   // Reset times vary in type (the SDK types quota_reset_at as epoch seconds),
   // so they are read leniently and never invalidate a quota.
   quota_reset_at: z.unknown().optional(),
@@ -69,11 +74,11 @@ const snapshotSchema = z.object({
 
 const copilotUserSchema = z.object({
   id: z.union([z.number(), z.string()]).optional(),
-  copilot_plan: z.string().min(1).optional(),
+  copilot_plan: nullable(z.string().min(1)),
   // Free accounts report the generic `individual` plan; the SKU tells them apart.
-  access_type_sku: z.string().optional(),
+  access_type_sku: nullable(z.string()),
   // AI-credit billing replaced request-based billing; legacy plans keep requests.
-  token_based_billing: z.boolean().optional(),
+  token_based_billing: nullable(z.boolean()),
   quota_reset_date_utc: z.unknown().optional(),
   quota_reset_date: z.unknown().optional(),
   quota_snapshots: z.record(z.string(), z.unknown()).optional(),
@@ -246,6 +251,12 @@ export type CredentialSources = {
    * `GITHUB_TOKEN`, which an explicit setting overrides.
    */
   explicitEnv?: ReadonlySet<string>;
+  /**
+   * The `GITHUB_TOKEN` values Codespaces injected. An inherited token that
+   * differs was exported by the user and keeps its precedence; when none are
+   * known, an inherited token is assumed to be the injected one.
+   */
+  injectedGithubTokens?: () => readonly string[];
   /** Contents of `$COPILOT_HOME/config.json`, or null when absent. */
   readConfig: () => string | null;
   /** OS credential store lookup; null when absent or unsupported. */
@@ -318,7 +329,8 @@ async function storedLogin(
  * tokens, then the stored login of the last signed-in user (OS keychain, or
  * the plaintext `copilot_tokens` fallback written when no keychain is
  * available), then `gh auth token`. In Codespaces the automatically injected
- * `GITHUB_TOKEN` does not override a stored login, so an inherited one is
+ * `GITHUB_TOKEN` does not override a stored login, so an inherited one that
+ * matches the token Codespaces recorded (or any, when none is recorded) is
  * tried after it. A `COPILOT_GH_HOST`/`GH_HOST` override only uses a login
  * stored for that host. Classic PATs are skipped wherever they turn up.
  */
@@ -334,8 +346,11 @@ export async function resolveCopilotCredential(sources: CredentialSources): Prom
     const token = sources.env[name]?.trim();
     if (!token || !isSupportedToken(token)) continue;
     if (name === "GITHUB_TOKEN" && inCodespace && !sources.explicitEnv?.has(name)) {
-      injected = { token, host, source: name };
-      break;
+      const known = sources.injectedGithubTokens?.() ?? [];
+      if (known.length === 0 || known.includes(token)) {
+        injected = { token, host, source: name };
+        break;
+      }
     }
     return { token, host, source: name };
   }

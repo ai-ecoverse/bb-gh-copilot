@@ -3,6 +3,7 @@ import {
   createGhTokenReader,
   createSecretReader,
   decodeCredentialBlob,
+  readInjectedGithubTokens,
   windowsCredentialTargets,
   WINDOWS_CREDENTIAL_SCRIPT,
   type CommandRunner,
@@ -75,5 +76,17 @@ describe("createGhTokenReader", () => {
     expect(run).toHaveBeenCalledWith(
       "gh", ["auth", "token", "--hostname", "acme.ghe.com"], expect.objectContaining({ env: { GH_CONFIG_DIR: "/tmp/gh" } }),
     );
+  });
+});
+
+describe("readInjectedGithubTokens", () => {
+  it("reads raw and base64-encoded tokens from the Codespaces env files", () => {
+    const files: Record<string, string> = {
+      "/workspaces/.codespaces/shared/.env-secrets": `OTHER=eA==\nGITHUB_TOKEN=${Buffer.from("ghu_injected").toString("base64")}\n`,
+      "/workspaces/.codespaces/shared/.env": "export GITHUB_TOKEN=\"ghu_plain\"\n",
+    };
+    expect(readInjectedGithubTokens((path) => files[path] ?? null))
+      .toEqual(expect.arrayContaining(["ghu_injected", "ghu_plain"]));
+    expect(readInjectedGithubTokens(() => null)).toEqual([]);
   });
 });

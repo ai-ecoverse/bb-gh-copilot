@@ -124,6 +124,21 @@ describe("parseCopilotUser", () => {
     ]);
   });
 
+  it("reads epoch-second reset times and never drops a quota over its reset field", () => {
+    const reading = parseCopilotUser({
+      quota_reset_date_utc: false,
+      quota_snapshots: {
+        premium_interactions: { percent_remaining: 75, unlimited: false, quota_reset_at: 1_791_201_600 },
+        chat: { percent_remaining: 50, unlimited: false, quota_reset_at: { weird: true } },
+      },
+    }, HOST);
+    if (reading.usage.status !== "ok") throw new Error("expected ok");
+    expect(reading.usage.windows.map((w) => [w.id, w.usedPercent, w.resetsAt])).toEqual([
+      ["premium_interactions", 25, "2026-10-05T12:00:00.000Z"],
+      ["chat", 50, null],
+    ]);
+  });
+
   it("rejects a non-object payload", () => {
     expect(parseCopilotUser("nope", HOST).usage.status).toBe("error");
   });

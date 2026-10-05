@@ -53,19 +53,21 @@ const snapshotSchema = z.object({
   unlimited: z.boolean().optional(),
   percent_remaining: z.number().finite().optional(),
   entitlement: numeric.optional(),
-  quota_reset_at: z.string().optional(),
+  // Reset times vary in type (the SDK types quota_reset_at as epoch seconds),
+  // so they are read leniently and never invalidate a quota.
+  quota_reset_at: z.unknown().optional(),
 }).passthrough();
 
 const copilotUserSchema = z.object({
   id: z.union([z.number(), z.string()]).optional(),
   copilot_plan: z.string().min(1).optional(),
-  quota_reset_date_utc: z.string().min(1).optional(),
-  quota_reset_date: z.string().min(1).optional(),
+  quota_reset_date_utc: z.unknown().optional(),
+  quota_reset_date: z.unknown().optional(),
   quota_snapshots: z.record(z.string(), z.unknown()).optional(),
   // Legacy Copilot Free: remaining and monthly allowance per category.
   limited_user_quotas: z.record(z.string(), z.unknown()).optional(),
   monthly_quotas: z.record(z.string(), z.unknown()).optional(),
-  limited_user_reset_date: z.string().min(1).optional(),
+  limited_user_reset_date: z.unknown().optional(),
 }).passthrough();
 
 const ACCOUNT_FIELDS = { plan: null, accountEmail: null, planLabel: null } as const;
@@ -99,9 +101,11 @@ export function apiBaseUrl(host: string): string {
   return `${url.origin}/api/v3`;
 }
 
-function isoTimestamp(value: string | undefined): string | null {
-  if (!value) return null;
-  const time = Date.parse(value);
+/** An ISO timestamp from a date string or Unix epoch seconds; null otherwise. */
+function isoTimestamp(value: unknown): string | null {
+  const time = typeof value === "string" && value.trim()
+    ? Date.parse(value)
+    : typeof value === "number" && Number.isFinite(value) && value > 0 ? value * 1000 : Number.NaN;
   return Number.isNaN(time) ? null : new Date(time).toISOString();
 }
 
@@ -113,7 +117,9 @@ type CopilotUser = z.infer<typeof copilotUserSchema>;
 
 /** Percentage used for one quota category, or null when it has no finite limit. */
 function quotaUsage(user: CopilotUser, id: string): { usedPercent: number; resetsAt: string | null } | null {
-  const defaultReset = isoTimestamp(user.quota_reset_date_utc ?? user.quota_reset_date ?? user.limited_user_reset_date);
+  const defaultReset = isoTimestamp(user.quota_reset_date_utc)
+    ?? isoTimestamp(user.quota_reset_date)
+    ?? isoTimestamp(user.limited_user_reset_date);
   const raw = user.quota_snapshots?.[id];
   if (raw !== undefined) {
     const snapshot = snapshotSchema.safeParse(raw);

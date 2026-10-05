@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-gh-copilot",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Adds GitHub Copilot CLI to bb as an ACP coding-agent provider.",
   "license": "MIT",
   "type": "module",

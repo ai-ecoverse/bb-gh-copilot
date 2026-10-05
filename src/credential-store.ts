@@ -109,8 +109,13 @@ export function createSecretReader(run: CommandRunner, platform: NodeJS.Platform
   };
 }
 
-/** Copilot CLI's last-resort credential: the GitHub CLI's token for the host. */
+/**
+ * Copilot CLI's last-resort credential: the GitHub CLI's token for the host.
+ * gh prefers GH_TOKEN/GITHUB_TOKEN over its stored login, and any usable
+ * value there was already taken, so they are dropped to reach the login.
+ */
 export function createGhTokenReader(run: CommandRunner, env: Record<string, string | undefined>) {
+  const { GH_TOKEN: _ghToken, GITHUB_TOKEN: _githubToken, ...ghEnv } = env;
   return (hostname: string): Promise<string | null> =>
-    run("gh", ["auth", "token", "--hostname", hostname], { timeoutMs: GH_TIMEOUT_MS, env });
+    run("gh", ["auth", "token", "--hostname", hostname], { timeoutMs: GH_TIMEOUT_MS, env: ghEnv });
 }

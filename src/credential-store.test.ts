@@ -69,8 +69,11 @@ describe("createSecretReader", () => {
 describe("createGhTokenReader", () => {
   it("asks gh for the host's token with Copilot's environment", async () => {
     const run = vi.fn<CommandRunner>(async () => "gho_gh");
-    const env = { GH_CONFIG_DIR: "/tmp/gh" };
+    const env = { GH_CONFIG_DIR: "/tmp/gh", GH_TOKEN: "ghp_classic", GITHUB_TOKEN: "ghp_classic" };
     expect(await createGhTokenReader(run, env)("acme.ghe.com")).toBe("gho_gh");
-    expect(run).toHaveBeenCalledWith("gh", ["auth", "token", "--hostname", "acme.ghe.com"], expect.objectContaining({ env }));
+    // gh would echo a skipped env token back instead of its stored login.
+    expect(run).toHaveBeenCalledWith(
+      "gh", ["auth", "token", "--hostname", "acme.ghe.com"], expect.objectContaining({ env: { GH_CONFIG_DIR: "/tmp/gh" } }),
+    );
   });
 });

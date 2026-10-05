@@ -234,9 +234,12 @@ export async function fetchCopilotUsage(
     return usageError(`Could not reach GitHub for Copilot quota: ${error instanceof Error ? error.message : String(error)}`);
   }
   if (response.status === 401) return usageStatus("expired");
-  // No Copilot quota endpoint for this account or host: a plan without
-  // reported limits, not an outage.
-  if (response.status === 404 || response.status === 501) {
+  // GitHub hides endpoints a token may not use behind 404, so it is not
+  // read as "no limits"; only a host that lacks the endpoint (501) is.
+  if (response.status === 404) {
+    return usageError("GitHub returned HTTP 404 for Copilot quota. The token may lack Copilot access.");
+  }
+  if (response.status === 501) {
     return { accountKey: null, usage: { status: "ok", ...ACCOUNT_FIELDS, windows: [] } };
   }
   if (!response.ok) return usageError(`GitHub returned HTTP ${response.status} for Copilot quota.`);

@@ -282,7 +282,10 @@ describe("fetchCopilotUsage", () => {
 
   it("maps HTTP statuses to usage states", async () => {
     expect((await fetchCopilotUsage(credential, respond(401))).usage.status).toBe("expired");
-    expect((await fetchCopilotUsage(credential, respond(404))).usage).toMatchObject({ status: "ok", windows: [] });
+    expect((await fetchCopilotUsage(credential, respond(404))).usage).toMatchObject({
+      status: "error",
+      message: "GitHub returned HTTP 404 for Copilot quota. The token may lack Copilot access.",
+    });
     expect((await fetchCopilotUsage(credential, respond(501))).usage).toMatchObject({ status: "ok", windows: [] });
     expect((await fetchCopilotUsage(credential, respond(500))).usage).toMatchObject({
       status: "error",

@@ -22,17 +22,29 @@ describe("decodeCredentialBlob", () => {
 });
 
 describe("createSecretReader", () => {
-  it("uses the platform's credential store", async () => {
+  it("reads the macOS keychain", async () => {
     const run = vi.fn<CommandRunner>(async () => "gho_stored");
     expect(await createSecretReader(run, "darwin")("copilot-cli", ACCOUNT)).toBe("gho_stored");
     expect(run).toHaveBeenLastCalledWith(
       "security", ["find-generic-password", "-s", "copilot-cli", "-a", ACCOUNT, "-w"], expect.anything(),
     );
-    await createSecretReader(run, "linux")("copilot-cli", ACCOUNT);
-    expect(run).toHaveBeenLastCalledWith(
-      "secret-tool", ["lookup", "service", "copilot-cli", "account", ACCOUNT], expect.anything(),
-    );
+  });
+
+  it("tries keyring-rs' username attribute, then keytar's account, on Linux", async () => {
+    const run = vi.fn<CommandRunner>(async (_file, args) => (args[3] === "account" ? "gho_keytar" : null));
+    expect(await createSecretReader(run, "linux")("copilot-cli", ACCOUNT)).toBe("gho_keytar");
+    expect(run.mock.calls.map(([file, args]) => [file, ...args])).toEqual([
+      ["secret-tool", "lookup", "service", "copilot-cli", "username", ACCOUNT],
+      ["secret-tool", "lookup", "service", "copilot-cli", "account", ACCOUNT],
+    ]);
+    run.mockImplementation(async () => "gho_native");
     run.mockClear();
+    expect(await createSecretReader(run, "linux")("copilot-cli", ACCOUNT)).toBe("gho_native");
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null off the supported platforms", async () => {
+    const run = vi.fn<CommandRunner>(async () => "gho_stored");
     expect(await createSecretReader(run, "aix")("copilot-cli", ACCOUNT)).toBeNull();
     expect(run).not.toHaveBeenCalled();
   });

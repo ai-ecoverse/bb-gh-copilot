@@ -21,6 +21,14 @@ export const KEYCHAIN_SERVICE = "copilot-cli";
 export const DEFAULT_HOST = "https://github.com";
 const USAGE_TIMEOUT_MS = 8_000;
 
+/**
+ * Copilot rejects classic PATs; an interactive CLI ignores one and moves on
+ * to the next credential, so quota is read with that next credential too.
+ */
+export function isSupportedToken(token: string): boolean {
+  return !token.startsWith("ghp_");
+}
+
 /** The env tokens Copilot CLI honours, in its own order of precedence. */
 export const TOKEN_ENV_VARS = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] as const;
 
@@ -198,13 +206,15 @@ async function storedLogin(
   if (host === null) return null;
   const account = `${host}:${lastUser.login}`;
   const stored = (await sources.readSecret(KEYCHAIN_SERVICE, account))?.trim();
-  if (stored) return { token: stored, host, source: "keychain" };
+  if (stored && isSupportedToken(stored)) return { token: stored, host, source: "keychain" };
 
   for (const key of ["copilotTokens", "copilot_tokens"]) {
     const tokens = config[key];
     if (tokens !== null && typeof tokens === "object") {
       const token = (tokens as Record<string, unknown>)[account];
-      if (typeof token === "string" && token.trim()) return { token: token.trim(), host, source: "config" };
+      if (typeof token === "string" && token.trim() && isSupportedToken(token.trim())) {
+        return { token: token.trim(), host, source: "config" };
+      }
     }
   }
   return null;
@@ -216,7 +226,7 @@ async function storedLogin(
  * the plaintext `copilot_tokens` fallback written when no keychain is
  * available), then `gh auth token`. In Codespaces the automatically injected
  * `GITHUB_TOKEN` does not override a stored login, so an inherited one is
- * tried after it.
+ * tried after it. Classic PATs are skipped wherever they turn up.
  */
 export async function resolveCopilotCredential(sources: CredentialSources): Promise<CopilotCredential | null> {
   const config = parseCopilotConfig(sources.readConfig());
@@ -229,7 +239,7 @@ export async function resolveCopilotCredential(sources: CredentialSources): Prom
   let injected: CopilotCredential | null = null;
   for (const name of TOKEN_ENV_VARS) {
     const token = sources.env[name]?.trim();
-    if (!token) continue;
+    if (!token || !isSupportedToken(token)) continue;
     if (name === "GITHUB_TOKEN" && inCodespace && !sources.explicitEnv?.has(name)) {
       injected = { token, host, source: name };
       break;
@@ -242,7 +252,7 @@ export async function resolveCopilotCredential(sources: CredentialSources): Prom
   if (injected) return injected;
 
   const ghToken = (await sources.readGhToken?.(new URL(host).host))?.trim();
-  return ghToken ? { token: ghToken, host, source: "gh" } : null;
+  return ghToken && isSupportedToken(ghToken) ? { token: ghToken, host, source: "gh" } : null;
 }
 
 export async function readCopilotUsage(args: {

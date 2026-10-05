@@ -82,6 +82,8 @@ at session start, authenticated the way the CLI
    the CLI's plaintext token store.
 3. `gh auth token` for the host.
 
+Classic PATs (`ghp_`) are skipped wherever they appear, as Copilot rejects them.
+
 `COPILOT_GH_HOST` / `GH_HOST` select a GHE.com or GHES host. The token is only
 sent to that GitHub host. Readings are cached for a minute.
 

@@ -87,7 +87,12 @@ export function createSecretReader(run: CommandRunner, platform: NodeJS.Platform
       return run("security", ["find-generic-password", "-s", service, "-a", account, "-w"], { timeoutMs: SECRET_TIMEOUT_MS });
     }
     if (platform === "linux") {
-      return run("secret-tool", ["lookup", "service", service, "account", account], { timeoutMs: SECRET_TIMEOUT_MS });
+      // keyring-rs (the native CLI) tags the item `username`; keytar (the JS CLI) used `account`.
+      for (const attribute of ["username", "account"]) {
+        const secret = await run("secret-tool", ["lookup", "service", service, attribute, account], { timeoutMs: SECRET_TIMEOUT_MS });
+        if (secret) return secret;
+      }
+      return null;
     }
     if (platform === "win32") {
       const blob = await run(

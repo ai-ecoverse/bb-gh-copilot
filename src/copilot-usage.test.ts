@@ -206,6 +206,20 @@ describe("resolveCopilotCredential", () => {
     expect(readGhToken).not.toHaveBeenCalled();
   });
 
+  it("skips classic PATs the way an interactive CLI does", async () => {
+    expect(await resolveCopilotCredential(sources({
+      env: { COPILOT_GITHUB_TOKEN: "ghp_classic", GH_TOKEN: "github_pat_fine" },
+    }))).toMatchObject({ token: "github_pat_fine", source: "GH_TOKEN" });
+    expect(await resolveCopilotCredential(sources({
+      env: { GITHUB_TOKEN: "ghp_classic" },
+      readSecret: async () => "gho_stored",
+    }))).toMatchObject({ token: "gho_stored", source: "keychain" });
+    expect(await resolveCopilotCredential(sources({
+      env: { GH_TOKEN: "ghp_classic" },
+      readGhToken: async () => "ghp_also_classic",
+    }))).toBeNull();
+  });
+
   it("returns null when nobody is signed in", async () => {
     expect(await resolveCopilotCredential(sources({ readConfig: () => null }))).toBeNull();
     expect(await resolveCopilotCredential(sources())).toBeNull();

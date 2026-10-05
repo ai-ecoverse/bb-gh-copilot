@@ -64,6 +64,7 @@ const snapshotSchema = z.object({
   entitlement: nullable(numeric),
   remaining: nullable(numeric),
   quota_remaining: nullable(numeric),
+  overage_count: nullable(numeric),
   has_quota: nullable(z.boolean()),
   token_based_billing: nullable(z.boolean()),
   // Reset times vary in type (the SDK types quota_reset_at as epoch seconds),
@@ -159,14 +160,19 @@ function quotaUsage(
     }
     // A zero entitlement (e.g. Free's premium requests) is no allowance, not a spent one.
     if (entitlement === 0) return null;
+    // Paid overage beyond the allowance; the contract allows more than 100%.
+    const overage = snapshot.data.overage_count;
+    const overUsed = overage !== undefined && overage > 0 && entitlement !== undefined && entitlement > 0
+      ? 100 + (overage / entitlement) * 100
+      : 0;
     // has_quota false blocks further requests, whatever the percentage says.
-    if (hasQuota === false) {
-      return { usedPercent: round2(Math.max(100, 100 - (remaining ?? 100))), resetsAt, credits };
+    const floor = hasQuota === false ? Math.max(100, overUsed) : overUsed;
+    if (remaining === undefined) {
+      return floor > 0 ? { usedPercent: round2(floor), resetsAt, credits } : null;
     }
-    if (remaining === undefined) return null;
     return {
-      // Negative remaining means overage; the contract allows more than 100.
-      usedPercent: round2(Math.max(0, 100 - remaining)),
+      // Negative remaining also means overage.
+      usedPercent: round2(Math.max(floor, 100 - remaining, 0)),
       resetsAt,
       credits,
     };

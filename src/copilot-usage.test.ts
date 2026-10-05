@@ -227,6 +227,20 @@ describe("parseCopilotUser", () => {
     expect(parseCopilotUser({ limited_user_quotas: null, monthly_quotas: null }, HOST).usage.status).toBe("ok");
   });
 
+  it("counts paid overage beyond the allowance", () => {
+    const reading = parseCopilotUser({
+      quota_snapshots: {
+        premium_interactions: { unlimited: false, entitlement: 100, percent_remaining: 0, overage_count: 25 },
+        chat: { unlimited: false, entitlement: "50", overage_count: 5, has_quota: false },
+      },
+    }, HOST);
+    if (reading.usage.status !== "ok") throw new Error("expected ok");
+    expect(reading.usage.windows.map((w) => [w.id, w.usedPercent])).toEqual([
+      ["premium_interactions", 125],
+      ["chat", 110],
+    ]);
+  });
+
   it("reports a finite snapshot without quota as exhausted", () => {
     const reading = parseCopilotUser({
       quota_snapshots: {

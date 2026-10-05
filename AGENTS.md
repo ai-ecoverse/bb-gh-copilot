@@ -75,7 +75,7 @@ bb plugin build .        # writes dist/server.js, .map, server.meta.json, app.js
 git diff --quiet -- dist/ || { echo "STALE dist/ — commit the rebuild"; exit 1; }
 ```
 
-All four pass on `153a012`. The build is byte-reproducible here: `git status
+All four pass on `6d5742b`. The build is byte-reproducible here: `git status
 --porcelain` was empty before and after `bb plugin build .`.
 
 On `dist/`: it *is* committed (7 files tracked). It is **not** what marketplace
@@ -104,11 +104,12 @@ bb provider list | grep -i copilot
 bb plugin logs gh-copilot -n 30
 ```
 
-Expected, as observed on `153a012`:
+Expected, as observed on `6d5742b`:
 
 ```
 gh-copilot@0.4.0  running
   source: path:/Users/trieloff/Developer/ai-ecoverse/bb-copilot
+  service provision: stopped
   command: bb gh-copilot — Manage the GitHub Copilot ACP provider.
 
 CLI: /opt/homebrew/bin/copilot
@@ -116,9 +117,13 @@ ACP customAgents entry: present
 legacy config.json entry: absent
 bb provider acp-gh-copilot: registered
 
+Plan: Business
+AI credits: 7.8% used, resets 2026-11-01T00:00:00.000Z
+
 acp-gh-copilot  GitHub Copilot
 ```
 
+`provision` is a one-shot service, so `stopped` after it ran is normal.
 Clean logs are `info` lines only (`acp-gh-copilot is already configured`).
 Repeated `warn: Could not read provider-acp customAgents: HTTP 404` lines are
 the boot-time retry loop and are benign *only* if an `info` line follows them.

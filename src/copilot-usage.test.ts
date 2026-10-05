@@ -137,6 +137,21 @@ describe("parseCopilotUser", () => {
     ]);
   });
 
+  it("derives the percentage from remaining and entitlement when it is missing", () => {
+    const reading = parseCopilotUser({
+      quota_snapshots: {
+        premium_interactions: { unlimited: false, entitlement: 300, remaining: 75 },
+        chat: { unlimited: false, entitlement: "50", quota_remaining: 50 },
+        completions: { unlimited: false, remaining: 10 },
+      },
+    }, HOST);
+    if (reading.usage.status !== "ok") throw new Error("expected ok");
+    expect(reading.usage.windows.map((w) => [w.id, w.usedPercent])).toEqual([
+      ["premium_interactions", 75],
+      ["chat", 0],
+    ]);
+  });
+
   it("reports an exhausted pooled entitlement instead of hiding it", () => {
     const reading = parseCopilotUser({
       quota_reset_date_utc: "2026-11-01T00:00:00.000Z",

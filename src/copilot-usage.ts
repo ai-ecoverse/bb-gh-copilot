@@ -57,6 +57,8 @@ const snapshotSchema = z.object({
   unlimited: z.boolean().optional(),
   percent_remaining: z.number().finite().optional(),
   entitlement: numeric.optional(),
+  remaining: numeric.optional(),
+  quota_remaining: numeric.optional(),
   has_quota: z.boolean().optional(),
   // Reset times vary in type (the SDK types quota_reset_at as epoch seconds),
   // so they are read leniently and never invalidate a quota.
@@ -134,7 +136,10 @@ function quotaUsage(
   if (raw !== undefined) {
     const snapshot = snapshotSchema.safeParse(raw);
     if (!snapshot.success) return null;
-    const { unlimited, percent_remaining: remaining, entitlement, has_quota: hasQuota } = snapshot.data;
+    const { unlimited, entitlement, has_quota: hasQuota } = snapshot.data;
+    const left = snapshot.data.remaining ?? snapshot.data.quota_remaining;
+    const remaining = snapshot.data.percent_remaining
+      ?? (left !== undefined && entitlement !== undefined && entitlement > 0 ? (left / entitlement) * 100 : undefined);
     const resetsAt = isoTimestamp(snapshot.data.quota_reset_at) ?? isoTimestamp(snapshot.data.reset_date) ?? defaultReset;
     if (unlimited === true || entitlement === -1) {
       // An unlimited per-user share of a pooled entitlement runs out when
@@ -163,8 +168,8 @@ function quotaUsage(
  * makes at session start) as a provider-usage measurement. `quota_snapshots`
  * win; legacy Free accounts report `limited_user_quotas` against
  * `monthly_quotas` instead. Unlimited quotas (unless their pool is spent),
- * zero allowances, and snapshots without a percentage are left out rather
- * than shown as 0% or 100%.
+ * zero allowances, and snapshots without a percentage or the counts to derive
+ * one are left out rather than shown as 0% or 100%.
  */
 export function parseCopilotUser(payload: unknown, host: string): CopilotUsageReading {
   const parsed = copilotUserSchema.safeParse(payload);

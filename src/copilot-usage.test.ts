@@ -97,6 +97,16 @@ describe("parseCopilotUser", () => {
     expect(credits.usage.windows.map((w) => [w.id, w.label, w.usedPercent])).toEqual([
       ["premium_interactions", "AI credits", 30],
     ]);
+
+    const snapshotMarked = parseCopilotUser({
+      quota_snapshots: {
+        premium_models: { percent_remaining: 40, unlimited: false, token_based_billing: true },
+      },
+    }, HOST);
+    if (snapshotMarked.usage.status !== "ok") throw new Error("expected ok");
+    expect(snapshotMarked.usage.windows.map((w) => [w.id, w.label, w.usedPercent])).toEqual([
+      ["premium_interactions", "AI credits", 60],
+    ]);
   });
 
   it("degrades to no windows rather than a fake 0%", () => {

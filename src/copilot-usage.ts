@@ -60,6 +60,7 @@ const snapshotSchema = z.object({
   remaining: numeric.optional(),
   quota_remaining: numeric.optional(),
   has_quota: z.boolean().optional(),
+  token_based_billing: z.boolean().optional(),
   // Reset times vary in type (the SDK types quota_reset_at as epoch seconds),
   // so they are read leniently and never invalidate a quota.
   quota_reset_at: z.unknown().optional(),
@@ -132,7 +133,7 @@ function quotaUsage(
   user: CopilotUser,
   id: string,
   snapshotKeys: readonly string[],
-): { usedPercent: number; resetsAt: string | null } | null {
+): { usedPercent: number; resetsAt: string | null; credits: boolean } | null {
   const defaultReset = isoTimestamp(user.quota_reset_date_utc)
     ?? isoTimestamp(user.quota_reset_date)
     ?? isoTimestamp(user.limited_user_reset_date);
@@ -145,10 +146,11 @@ function quotaUsage(
     const remaining = snapshot.data.percent_remaining
       ?? (left !== undefined && entitlement !== undefined && entitlement > 0 ? (left / entitlement) * 100 : undefined);
     const resetsAt = isoTimestamp(snapshot.data.quota_reset_at) ?? isoTimestamp(snapshot.data.reset_date) ?? defaultReset;
+    const credits = (snapshot.data.token_based_billing ?? user.token_based_billing) === true;
     if (unlimited === true || entitlement === -1) {
       // An unlimited per-user share of a pooled entitlement runs out when
       // the pool does; has_quota false is the only signal of that.
-      return hasQuota === false ? { usedPercent: 100, resetsAt } : null;
+      return hasQuota === false ? { usedPercent: 100, resetsAt, credits } : null;
     }
     // A zero entitlement (e.g. Free's premium requests) is no allowance, not a spent one.
     if (remaining === undefined || entitlement === 0) return null;
@@ -156,6 +158,7 @@ function quotaUsage(
       // Negative remaining means overage; the contract allows more than 100.
       usedPercent: round2(Math.max(0, 100 - remaining)),
       resetsAt,
+      credits,
     };
   }
   const monthly = numeric.safeParse(user.monthly_quotas?.[id]);
@@ -164,6 +167,7 @@ function quotaUsage(
   return {
     usedPercent: round2(Math.max(0, 100 - (left.data / monthly.data) * 100)),
     resetsAt: defaultReset,
+    credits: user.token_based_billing === true,
   };
 }
 
@@ -181,8 +185,11 @@ export function parseCopilotUser(payload: unknown, host: string): CopilotUsageRe
   const user = parsed.data;
   const windows = QUOTAS.flatMap(([id, label, snapshotKeys]) => {
     const quota = quotaUsage(user, id, snapshotKeys);
-    const shown = id === "premium_interactions" && user.token_based_billing === true ? "AI credits" : label;
-    return quota === null ? [] : [{ kind: "custom" as const, id, label: shown, ...quota, model: null, cost: null }];
+    if (quota === null) return [];
+    const { credits, ...used } = quota;
+    // The billing marker sits on the user response, the snapshot, or both.
+    const shown = id === "premium_interactions" && credits ? "AI credits" : label;
+    return [{ kind: "custom" as const, id, label: shown, ...used, model: null, cost: null }];
   });
   const planId = user.access_type_sku === "free_limited_copilot" ? "free" : (user.copilot_plan ?? null);
   return {

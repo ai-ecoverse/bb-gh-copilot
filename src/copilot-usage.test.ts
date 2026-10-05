@@ -124,6 +124,34 @@ describe("parseCopilotUser", () => {
     ]);
   });
 
+  it("reads premium_models before premium_interactions", () => {
+    const reading = parseCopilotUser({
+      quota_snapshots: {
+        premium_models: { percent_remaining: 20, unlimited: false, reset_date: "2026-11-01" },
+        premium_interactions: { percent_remaining: 90, unlimited: false },
+      },
+    }, HOST);
+    if (reading.usage.status !== "ok") throw new Error("expected ok");
+    expect(reading.usage.windows.map((w) => [w.id, w.label, w.usedPercent, w.resetsAt])).toEqual([
+      ["premium_interactions", "Premium requests", 80, "2026-11-01T00:00:00.000Z"],
+    ]);
+  });
+
+  it("reports an exhausted pooled entitlement instead of hiding it", () => {
+    const reading = parseCopilotUser({
+      quota_reset_date_utc: "2026-11-01T00:00:00.000Z",
+      quota_snapshots: {
+        premium_models: { unlimited: true, has_quota: false, percent_remaining: 100 },
+        chat: { unlimited: true, has_quota: true, percent_remaining: 100 },
+        completions: { entitlement: -1, percent_remaining: 100 },
+      },
+    }, HOST);
+    if (reading.usage.status !== "ok") throw new Error("expected ok");
+    expect(reading.usage.windows.map((w) => [w.id, w.usedPercent, w.resetsAt])).toEqual([
+      ["premium_interactions", 100, "2026-11-01T00:00:00.000Z"],
+    ]);
+  });
+
   it("reads epoch-second reset times and never drops a quota over its reset field", () => {
     const reading = parseCopilotUser({
       quota_reset_date_utc: false,

@@ -32,11 +32,15 @@ export function isSupportedToken(token: string): boolean {
 /** The env tokens Copilot CLI honours, in its own order of precedence. */
 export const TOKEN_ENV_VARS = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] as const;
 
-/** `quota_snapshots` keys reported as windows, in display order. */
+/**
+ * Windows in display order, with the `quota_snapshots` keys that feed each,
+ * newest first: premium requests moved from `premium_interactions` to
+ * `premium_models`, and VS Code reads the latter before the former.
+ */
 const QUOTAS = [
-  ["premium_interactions", "Premium requests"],
-  ["chat", "Chat messages"],
-  ["completions", "Code completions"],
+  ["premium_interactions", "Premium requests", ["premium_models", "premium_interactions"]],
+  ["chat", "Chat messages", ["chat"]],
+  ["completions", "Code completions", ["completions"]],
 ] as const;
 
 const PLAN_LABELS: Record<string, string> = {
@@ -53,9 +57,11 @@ const snapshotSchema = z.object({
   unlimited: z.boolean().optional(),
   percent_remaining: z.number().finite().optional(),
   entitlement: numeric.optional(),
+  has_quota: z.boolean().optional(),
   // Reset times vary in type (the SDK types quota_reset_at as epoch seconds),
   // so they are read leniently and never invalidate a quota.
   quota_reset_at: z.unknown().optional(),
+  reset_date: z.unknown().optional(),
 }).passthrough();
 
 const copilotUserSchema = z.object({
@@ -116,21 +122,31 @@ function round2(value: number): number {
 type CopilotUser = z.infer<typeof copilotUserSchema>;
 
 /** Percentage used for one quota category, or null when it has no finite limit. */
-function quotaUsage(user: CopilotUser, id: string): { usedPercent: number; resetsAt: string | null } | null {
+function quotaUsage(
+  user: CopilotUser,
+  id: string,
+  snapshotKeys: readonly string[],
+): { usedPercent: number; resetsAt: string | null } | null {
   const defaultReset = isoTimestamp(user.quota_reset_date_utc)
     ?? isoTimestamp(user.quota_reset_date)
     ?? isoTimestamp(user.limited_user_reset_date);
-  const raw = user.quota_snapshots?.[id];
+  const raw = snapshotKeys.map((key) => user.quota_snapshots?.[key]).find((value) => value !== undefined);
   if (raw !== undefined) {
     const snapshot = snapshotSchema.safeParse(raw);
     if (!snapshot.success) return null;
-    const { unlimited, percent_remaining: remaining, entitlement } = snapshot.data;
+    const { unlimited, percent_remaining: remaining, entitlement, has_quota: hasQuota } = snapshot.data;
+    const resetsAt = isoTimestamp(snapshot.data.quota_reset_at) ?? isoTimestamp(snapshot.data.reset_date) ?? defaultReset;
+    if (unlimited === true || entitlement === -1) {
+      // An unlimited per-user share of a pooled entitlement runs out when
+      // the pool does; has_quota false is the only signal of that.
+      return hasQuota === false ? { usedPercent: 100, resetsAt } : null;
+    }
     // A zero entitlement (e.g. Free's premium requests) is no allowance, not a spent one.
-    if (unlimited === true || remaining === undefined || entitlement === 0) return null;
+    if (remaining === undefined || entitlement === 0) return null;
     return {
       // Negative remaining means overage; the contract allows more than 100.
       usedPercent: round2(Math.max(0, 100 - remaining)),
-      resetsAt: isoTimestamp(snapshot.data.quota_reset_at) ?? defaultReset,
+      resetsAt,
     };
   }
   const monthly = numeric.safeParse(user.monthly_quotas?.[id]);
@@ -146,15 +162,16 @@ function quotaUsage(user: CopilotUser, id: string): { usedPercent: number; reset
  * Copilot's own quota report (`GET /copilot_internal/user`, the call the CLI
  * makes at session start) as a provider-usage measurement. `quota_snapshots`
  * win; legacy Free accounts report `limited_user_quotas` against
- * `monthly_quotas` instead. Unlimited quotas, zero allowances, and snapshots
- * without a percentage are left out rather than shown as 0% or 100%.
+ * `monthly_quotas` instead. Unlimited quotas (unless their pool is spent),
+ * zero allowances, and snapshots without a percentage are left out rather
+ * than shown as 0% or 100%.
  */
 export function parseCopilotUser(payload: unknown, host: string): CopilotUsageReading {
   const parsed = copilotUserSchema.safeParse(payload);
   if (!parsed.success) return usageError("GitHub returned an unrecognised Copilot quota response.");
   const user = parsed.data;
-  const windows = QUOTAS.flatMap(([id, label]) => {
-    const quota = quotaUsage(user, id);
+  const windows = QUOTAS.flatMap(([id, label, snapshotKeys]) => {
+    const quota = quotaUsage(user, id, snapshotKeys);
     return quota === null ? [] : [{ kind: "custom" as const, id, label, ...quota, model: null, cost: null }];
   });
   const planId = user.copilot_plan ?? null;

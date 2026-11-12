@@ -3,4 +3,8 @@
 .env
 .env.*
 node_modules/
-
+dist/
+coverage/
+artifacts/
+junit/
+test/unit/

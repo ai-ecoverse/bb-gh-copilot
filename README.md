@@ -20,19 +20,24 @@ version of this plugin have to be re-pointed at `acp-gh-copilot`.
 
 ## Install
 
-Until the marketplace entry is merged, install directly from GitHub:
+From the bb marketplace:
 
 ```bash
-bb plugin install https://github.com/ai-ecoverse/bb-gh-copilot
+bb plugin install gh-copilot@bb-community
+```
+
+Or directly from GitHub, tracking releases:
+
+```bash
+bb plugin install git:https://github.com/ai-ecoverse/bb-gh-copilot.git@^1.0.0
 ```
 
 For local development:
 
 ```bash
 npm install
-npm run typecheck
+npm run lint
 npm test
-npm run build
 bb plugin install .
 ```
 
@@ -129,25 +134,46 @@ removed in 0.41). Authentication and model availability remain owned by the
 vendor CLI and the user's account.
 
 The package ID is `gh-copilot`; the provider ID is `acp-gh-copilot`. The compact
-icon is a `currentColor` mask so it follows the bb theme.
+icon is a `currentColor` mask so it follows the bb theme. It is the `copilot-48`
+icon from [GitHub Primer Octicons](https://github.com/primer/octicons) (MIT;
+GitHub marks are subject to GitHub's brand guidelines). It has an intrinsic
+16×16 size, without which WebKit (bb's iOS and iPadOS apps) lays it out at 300px
+inside bb's `min-w-max` icon wrapper.
 
 ## Development
 
 ```bash
-npm run typecheck
-npm test
-npm run build
+npm install    # also installs this worktree's git hooks
+npm run lint   # slicc-lint: Biome, typecheck, no comments, AGENTS.md, no unit tests in git
+npm test       # node --test test/integration/*.test.mjs
+npm run build  # bb plugin build . into the gitignored dist/
 ```
+
+The repository follows
+[slicc-shared-web](https://github.com/ai-ecoverse/slicc-shared-web): its
+Renovate preset, Biome config, TypeScript base and pre-commit hooks, and its
+reusable pipeline (lint, integration tests, Claude and Codex reviews, release).
+Unit tests stay out of git in `test/unit/`; the pre-commit hook requires them to
+cover every staged line in `src/`.
 
 `src/agent-entry.ts` holds the pure entry-building logic — what the managed
 entry looks like, how it is merged into an existing `customAgents` array, and
 what is safe to remove. `src/copilot-usage.ts` resolves the Copilot login and
 turns GitHub's quota report into a usage measurement; `src/credential-store.ts`
 reads the OS keychain and `gh`; `src/usage-source.ts` publishes the measurement
-over RPC; `src/usage-contract.ts` is bb's contract, copied verbatim. `npm test`
-(vitest) covers all of them. `server.ts` keeps the side effects:
-locating the CLI, reading and writing the setting, the keychain lookup, the CLI
-commands.
+over RPC; `src/usage-contract.ts` is bb's `provider-usage.v1` contract, copied
+from bb's `plugins/provider-usage/usage-source-contract.ts` (bb owns it, and each
+usage source ships its own copy). `server.ts` keeps the side effects: locating
+the CLI, reading and writing the setting, the keychain lookup, the CLI commands.
+
+## Releases
+
+Every push to `main` runs semantic-release. Conventional commits pick the
+version (`fix:` a patch, `feat:` a minor, a `BREAKING CHANGE:` footer a major),
+and the release commits the bumped `package.json` and tags `vX.Y.Z`. bb installs
+the highest tag the marketplace range (`^1.0.0`) allows, so a new major needs a
+marketplace PR. Never move or delete a published tag: bb refuses a tag whose
+commit changed.
 
 The plugin requires bb 0.40+ and plugin SDK 0.4.94+.
 

@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: read
+  issues: write
+  pull-requests: write
+  statuses: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    uses: ai-ecoverse/slicc-shared-web/.github/workflows/pipeline.yml@v2.14.2
+    secrets: inherit
+    with:
+      test: npm test
+      test-glob: test/integration/*.test.mjs
+      shards: 1

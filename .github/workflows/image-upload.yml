@@ -1,14 +1,3 @@
-# Image upload broker for `gh image` (ai-aligned-gh).
-#
-# Installed automatically by the as-a-bot GitHub App
-# (https://github.com/ai-ecoverse/as-a-bot). No secrets required: the
-# workflow only proves repository identity to the as-a-bot worker via
-# GitHub OIDC; the worker mints the pre-signed upload URL itself.
-#
-# Only users with write access can dispatch this workflow — that is the
-# entire authorization model: minting an upload URL requires the same
-# permission as pushing code.
-
 name: Image Upload
 run-name: "Request image upload URL ${{ inputs.hash }}.${{ inputs.ext }}"
 
@@ -25,7 +14,7 @@ on:
         type: string
 
 permissions:
-  id-token: write   # OIDC token authenticates this repo to the as-a-bot worker
+  id-token: write
   contents: read
 
 jobs:
@@ -47,9 +36,6 @@ jobs:
             -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=as-a-bot-images" | jq -r .value)
 
-          # The worker responds with only the serve URL — the pre-signed
-          # upload URL stays out of the (publicly readable) run logs and is
-          # delivered to the gh image client via the worker's status endpoint.
           RESPONSE=$(curl -sSf -X POST "$AS_A_BOT_URL/image-upload/offer" \
             -H "Authorization: Bearer $OIDC_TOKEN" \
             -H "Content-Type: application/json" \

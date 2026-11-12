@@ -1,29 +1,27 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { PROFILE } from "./agent-entry.js";
-import type { CopilotUsageReading } from "./copilot-usage.js";
+import type { BbPluginApi } from '@get-bb/plugin-sdk';
+import { PROFILE } from './agent-entry.ts';
+import type { CopilotUsageReading } from './copilot-usage.ts';
 import {
+  type UsageMeasurement,
   usageFetchMethod,
   usageListMethod,
   usageMeasurementSchema,
   usageSourceRpcContract,
-  type UsageMeasurement,
-} from "./usage-contract.js";
+} from './usage-contract.ts';
 
 export const CACHE_TTL_MS = 60_000;
 
 type LocalHost = { id: string; name: string };
 
-/**
- * Publishes GitHub Copilot quota through bb's `provider-usage.v1` contract so
- * the Provider usage panel and other consumers can show it. The credentials
- * live with the Copilot CLI on the machine this plugin runs on, so the only
- * resource is the bb server's own host.
- */
+export interface UsageSource {
+  collect(refresh: boolean): Promise<UsageMeasurement>;
+}
+
 export function registerUsageSource(
-  bb: Pick<BbPluginApi, "rpc" | "sdk">,
+  bb: Pick<BbPluginApi, 'rpc' | 'sdk'>,
   read: () => Promise<CopilotUsageReading>,
-  now: () => number = Date.now,
-) {
+  now: () => number = Date.now
+): UsageSource {
   let cached: UsageMeasurement | null = null;
   let pending: { refresh: boolean; promise: Promise<UsageMeasurement> } | null = null;
 
@@ -41,7 +39,7 @@ export function registerUsageSource(
     const previous = cached;
     if (
       !refresh &&
-      previous?.usage.status === "ok" &&
+      previous?.usage.status === 'ok' &&
       previous.observedAt !== null &&
       now() - previous.observedAt < CACHE_TTL_MS
     ) {
@@ -54,7 +52,7 @@ export function registerUsageSource(
       reading = {
         accountKey: null,
         usage: {
-          status: "error",
+          status: 'error',
           plan: null,
           accountEmail: null,
           planLabel: null,
@@ -62,13 +60,12 @@ export function registerUsageSource(
         },
       };
     }
-    const ok = reading.usage.status === "ok";
+    const ok = reading.usage.status === 'ok';
     const value = usageMeasurementSchema.parse({
-      // Only a failed read keeps the last known account; any other result
-      // speaks for the current credential, whose identity may be unknown.
-      accountKey: reading.usage.status === "error"
-        ? (reading.accountKey ?? previous?.accountKey ?? null)
-        : reading.accountKey,
+      accountKey:
+        reading.usage.status === 'error'
+          ? (reading.accountKey ?? previous?.accountKey ?? null)
+          : reading.accountKey,
       observedAt: ok ? now() : (previous?.observedAt ?? null),
       usage: reading.usage,
     });
@@ -82,7 +79,12 @@ export function registerUsageSource(
       await pending.promise.catch(() => undefined);
       return collect(refresh);
     }
-    const current = { refresh, promise: load(refresh).finally(() => { pending = null; }) };
+    const current = {
+      refresh,
+      promise: load(refresh).finally(() => {
+        pending = null;
+      }),
+    };
     pending = current;
     return current.promise;
   }
@@ -94,19 +96,21 @@ export function registerUsageSource(
         const host = await localHost();
         if (host === null) return { resources: [] };
         return {
-          resources: [{
-            id: resourceId(host.id),
-            accountKey: cached?.accountKey ?? null,
-            providerId: PROFILE.providerId,
-            label: PROFILE.displayName,
-            scope: { kind: "host" as const, hostId: host.id, hostName: host.name },
-          }],
+          resources: [
+            {
+              id: resourceId(host.id),
+              accountKey: cached?.accountKey ?? null,
+              providerId: PROFILE.providerId,
+              label: PROFILE.displayName,
+              scope: { kind: 'host' as const, hostId: host.id, hostName: host.name },
+            },
+          ],
         };
       },
       async [usageFetchMethod]({ resourceId: requested, refresh }) {
         const host = await localHost();
         if (host === null || requested !== resourceId(host.id)) {
-          throw new Error("Usage resource no longer exists.");
+          throw new Error('Usage resource no longer exists.');
         }
         return collect(refresh);
       },
@@ -115,7 +119,7 @@ export function registerUsageSource(
       experimental_discoverable: true,
       experimental_description:
         "GitHub Copilot premium-request, chat, and completion quota for the Copilot CLI login on the bb server's machine. Inventory reads metadata only.",
-    },
+    }
   );
 
   return { collect };

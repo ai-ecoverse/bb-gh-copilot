@@ -1,14 +1,8 @@
 {
+  "extends": "@ai-ecoverse/slicc-shared-web/tsconfig.json",
   "compilerOptions": {
-    "strict": true,
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM"],
     "jsx": "react-jsx",
-    "types": ["node"],
-    "noEmit": true,
-    "skipLibCheck": false
+    "types": ["node"]
   },
-  "include": ["server.ts", "app.tsx", "src"]
+  "include": ["server.ts", "app.tsx", "src/**/*.ts"]
 }

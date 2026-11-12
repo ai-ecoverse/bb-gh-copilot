@@ -1,0 +1,4 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": ["@ai-ecoverse/slicc-shared-web/biome"]
+}

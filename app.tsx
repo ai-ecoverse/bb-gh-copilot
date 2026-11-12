@@ -1,13 +1,10 @@
-import { definePluginApp } from "@get-bb/plugin-sdk/app";
+import { definePluginApp } from '@get-bb/plugin-sdk/app';
 
 function CopilotIcon({ className }: { className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 48 48"
-      // Intrinsic size: without it WebKit (bb iOS/iPadOS app) lays the svg out
-      // at 300px inside bb's min-w-max icon wrapper, which pushes the model
-      // label out of the composer chip. The host className still sizes it.
       width="16"
       height="16"
       fill="currentColor"
@@ -21,5 +18,9 @@ function CopilotIcon({ className }: { className?: string }) {
 }
 
 export default definePluginApp((app) => {
-  app.slots.experimental_providerIcon({ providerKind: "agent", providerId: "acp-gh-copilot", icon: CopilotIcon });
+  app.slots.experimental_providerIcon({
+    providerKind: 'agent',
+    providerId: 'acp-gh-copilot',
+    icon: CopilotIcon,
+  });
 });

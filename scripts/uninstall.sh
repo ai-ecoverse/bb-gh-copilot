@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Remove the Copilot customAcpAgents entry from ~/.bb/config.json.
 set -euo pipefail
 
 BB_DATA_DIR="${BB_DATA_DIR:-${HOME}/.bb}"

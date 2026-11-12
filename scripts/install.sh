@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Merge bb-copilot into ~/.bb/config.json customAcpAgents and install its logo.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,7 +26,6 @@ if ! command -v "$CLI_NAME" >/dev/null 2>&1; then
   echo "warning: copilot not on PATH — install with: brew install --cask copilot-cli" >&2
   echo "warning: bb's host daemon may not share your shell PATH; install will keep command as \"copilot\"" >&2
 else
-  # Resolve an absolute path because the host daemon may have a smaller PATH.
   COPILOT_CMD="$(command -v "$CLI_NAME")"
   echo "copilot: $COPILOT_CMD ($("$COPILOT_CMD" --version 2>/dev/null | head -1))"
 fi

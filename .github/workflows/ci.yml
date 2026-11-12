@@ -24,6 +24,7 @@ jobs:
     uses: ai-ecoverse/slicc-shared-web/.github/workflows/pipeline.yml@v2.14.2
     secrets: inherit
     with:
+      runs-on: ubuntu-latest
       test: npm test
       test-glob: test/integration/*.test.mjs
       shards: 1

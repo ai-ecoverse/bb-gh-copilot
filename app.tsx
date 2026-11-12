@@ -5,6 +5,11 @@ function CopilotIcon({ className }: { className?: string }) {
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 48 48"
+      // Intrinsic size: without it WebKit (bb iOS/iPadOS app) lays the svg out
+      // at 300px inside bb's min-w-max icon wrapper, which pushes the model
+      // label out of the composer chip. The host className still sizes it.
+      width="16"
+      height="16"
       fill="currentColor"
       className={className}
       aria-hidden="true"

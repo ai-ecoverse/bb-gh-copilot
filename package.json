@@ -73,7 +73,7 @@
     "monocart-coverage-reports": "3.2.1",
     "semantic-release": "25.0.9",
     "sonner": "2.0.8",
-    "tailwind-merge": "3.7.0",
+    "tailwind-merge": "3.7.1",
     "typescript": "7.0.2",
     "vaul": "1.1.2"
   }
